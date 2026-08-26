@@ -1,4 +1,4 @@
-"""Phase 2 of AirBeat: a mirrored camera preview with hand landmarks."""
+"""Phase 2 of Air Rhythm: a mirrored camera preview with hand landmarks."""
 
 from pathlib import Path
 import time
@@ -8,7 +8,7 @@ import mediapipe as mp
 
 
 CAMERA_INDEX = 0
-WINDOW_TITLE = "AirBeat | Phase 2 - Hand Tracking"
+WINDOW_TITLE = "Air Rhythm | Phase 2 - Hand Tracking"
 MAX_HANDS = 2
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
 
@@ -122,7 +122,7 @@ def main() -> None:
                 frame_read_successfully, frame = camera.read()
 
                 if not frame_read_successfully:
-                    print("Could not read a camera frame. Closing AirBeat.")
+                    print("Could not read a camera frame. Closing Air Rhythm.")
                     break
 
                 mirrored_frame = cv2.flip(frame, 1)
