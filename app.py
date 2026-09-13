@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import dataclass
+from enum import Enum
 import math
 from pathlib import Path
 import random
@@ -30,6 +31,7 @@ from rhythm_game import (
     TimingGrade,
     grade_timing,
 )
+import ui
 
 
 CAMERA_INDEX = 0
@@ -93,6 +95,39 @@ PRIVACY_LABELS = {
     PrivacyMode.SKELETON_ONLY: "Skeleton only",
     PrivacyMode.CAMERA: "Camera",
 }
+
+
+class AppScreen(Enum):
+    """The three presentation states around the live camera pipeline."""
+
+    TITLE = "TITLE"
+    GAMEPLAY = "GAMEPLAY"
+    RESULTS = "RESULTS"
+
+
+def audio_status_label(audio: AudioEngine) -> str:
+    """Return a short, truthful speaker status for the interface."""
+    if not audio.enabled:
+        return "Sound unavailable"
+    if audio.muted:
+        return "Muted"
+    return "Sound on"
+
+
+def handedness_confidences(detection_result) -> tuple[float, ...]:
+    """Read MediaPipe's hand-classification confidence values when present.
+
+    These scores describe the Left/Right handedness classification.  They are
+    useful model telemetry, but they are not a general tracking-accuracy score.
+    """
+    scores = []
+    for classifications in getattr(detection_result, "handedness", ()):
+        if not classifications:
+            continue
+        score = getattr(classifications[0], "score", None)
+        if isinstance(score, (int, float)) and math.isfinite(score):
+            scores.append(max(0.0, min(1.0, float(score))))
+    return tuple(scores)
 
 
 @dataclass
@@ -606,6 +641,19 @@ def draw_falling_nodes(
 
     for node in active_nodes:
         center = (round(node.x), round(node.y))
+        pulse = 0.0
+        if current_time is not None and node.target_time is not None:
+            pulse = 1.0 - min(
+                1.0,
+                abs(node.target_time - current_time) / NODE_TRAVEL_SECONDS,
+            )
+        ui.draw_glow_circle(
+            frame,
+            center,
+            node.radius + 1,
+            node.color,
+            pulse,
+        )
         if current_time is not None and node.target_time is not None:
             seconds_until_target = node.target_time - current_time
             approaching_progress = max(
@@ -666,13 +714,12 @@ def draw_hit_effects(
     for effect in hit_effects:
         progress = (current_time - effect.started_at) / HIT_EFFECT_DURATION_SECONDS
         ring_radius = int(25 + progress * 45)
-        cv2.circle(
+        ui.draw_glow_circle(
             frame,
             effect.position,
             ring_radius,
             effect.color,
-            4,
-            cv2.LINE_AA,
+            1.0 - progress,
         )
         text_size, _ = cv2.getTextSize(
             effect.rating,
@@ -763,165 +810,6 @@ def draw_strike_feedback(
         )
 
 
-def draw_outlined_text(
-    frame,
-    text: str,
-    position: tuple[int, int],
-    scale: float,
-    color: tuple[int, int, int] = (255, 255, 255),
-    thickness: int = 2,
-) -> None:
-    """Draw readable text on either a camera image or the privacy stage."""
-    cv2.putText(
-        frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, scale,
-        (15, 15, 18), thickness + 3, cv2.LINE_AA,
-    )
-    cv2.putText(
-        frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, scale,
-        color, thickness, cv2.LINE_AA,
-    )
-
-
-def draw_status_overlay(
-    frame,
-    hand_count: int,
-    hit_count: int,
-    miss_count: int,
-    active_strikes: set[str],
-    audio: AudioEngine,
-    privacy_mode: PrivacyMode,
-    game_mode: str,
-    rhythm_round: RhythmRound,
-    current_time: float,
-) -> None:
-    """Show compact timing, score, privacy, and control information."""
-    if game_mode == GAME_MODE_CHALLENGE:
-        score = rhythm_round.score
-        status_text = (
-            f"Hands: {hand_count}/{MAX_HANDS}   "
-            f"Score: {score.score:,}   Combo: {score.combo}"
-        )
-        phase = rhythm_round.phase_at(current_time)
-        if phase is RoundPhase.COUNTDOWN:
-            instruction_text = "Get ready - the halo meets the circle on the beat"
-        elif phase is RoundPhase.RESULTS:
-            instruction_text = "Round complete - press R to replay"
-        elif active_strikes:
-            instruction_text = f"Timing + motion bonus: {', '.join(sorted(active_strikes))}"
-        else:
-            instruction_text = "Touch when the shrinking halo reaches the circle"
-        mode_status = (
-            f"{MELODY_TITLE} Challenge | Notes left: {rhythm_round.remaining_count}"
-        )
-    else:
-        status_text = (
-            f"Hands: {hand_count}/{MAX_HANDS}   Hits: {hit_count}   Misses: {miss_count}"
-        )
-        instruction_text = (
-            f"Motion bonus: {', '.join(sorted(active_strikes))}"
-            if active_strikes
-            else "Touch or sweep through a falling circle"
-        )
-        mode_status = "Free play | Each color is an instrument"
-
-    instruction_color = (80, 255, 110) if active_strikes else (225, 225, 225)
-    draw_outlined_text(frame, status_text, (22, 39), 0.65)
-    draw_outlined_text(frame, instruction_text, (22, 68), 0.52, instruction_color)
-
-    if not audio.enabled:
-        audio_status = "Sound unavailable"
-    elif audio.muted:
-        audio_status = "Muted"
-    else:
-        audio_status = "Sound on"
-    privacy_status = PRIVACY_LABELS[privacy_mode]
-    footer_lines = (
-        f"{mode_status} | {audio_status} | Privacy: {privacy_status}",
-        "1 Challenge   2 Free play   P Privacy   M Mute   R Restart   Q Quit",
-    )
-    frame_height, frame_width = frame.shape[:2]
-    for index, line in enumerate(footer_lines):
-        text_width = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0][0]
-        scale = 0.5 * min(1.0, max(1, frame_width - 44) / max(1, text_width))
-        draw_outlined_text(
-            frame,
-            line,
-            (22, frame_height - 45 + index * 25),
-            scale,
-            thickness=2,
-        )
-
-
-def draw_countdown(frame, rhythm_round: RhythmRound, current_time: float) -> None:
-    """Show 3, 2, 1 and GO without hiding the incoming first circle."""
-    remaining = rhythm_round.countdown_remaining(current_time)
-    if remaining > 0:
-        message = str(max(1, math.ceil(remaining)))
-    elif current_time - rhythm_round.song_start_time < 0.5:
-        message = "GO!"
-    else:
-        return
-
-    scale = 3.0 if message != "GO!" else 2.2
-    text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, scale, 7)[0]
-    position = (
-        frame.shape[1] // 2 - text_size[0] // 2,
-        frame.shape[0] // 2 + text_size[1] // 2,
-    )
-    draw_outlined_text(frame, message, position, scale, (80, 255, 110), 7)
-
-
-def draw_results_screen(frame, rhythm_round: RhythmRound) -> None:
-    """Give a demo round a clear ending with useful performance feedback."""
-    score = rhythm_round.score
-    height, width = frame.shape[:2]
-    panel_left, panel_right = int(width * 0.19), int(width * 0.81)
-    panel_top, panel_bottom = int(height * 0.17), int(height * 0.78)
-    overlay = frame.copy()
-    cv2.rectangle(
-        overlay,
-        (panel_left, panel_top),
-        (panel_right, panel_bottom),
-        (12, 14, 23),
-        -1,
-        cv2.LINE_AA,
-    )
-    cv2.addWeighted(overlay, 0.88, frame, 0.12, 0, frame)
-    cv2.rectangle(
-        frame,
-        (panel_left, panel_top),
-        (panel_right, panel_bottom),
-        (80, 220, 255),
-        3,
-        cv2.LINE_AA,
-    )
-
-    def centered(text: str, y: int, scale: float, color=(255, 255, 255), thickness=2):
-        text_width = cv2.getTextSize(
-            text, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness
-        )[0][0]
-        draw_outlined_text(
-            frame,
-            text,
-            (width // 2 - text_width // 2, y),
-            scale,
-            color,
-            thickness,
-        )
-
-    centered("ROUND COMPLETE", panel_top + 45, 0.85, (80, 220, 255), 2)
-    centered(f"RANK {score.rank}", panel_top + 125, 2.0, (80, 255, 110), 5)
-    centered(f"Score {score.score:,}   Accuracy {score.accuracy:.1f}%", panel_top + 172, 0.62)
-    centered(
-        f"Perfect {score.perfect}   Great {score.great}   "
-        f"Good {score.good}   Miss {score.misses}",
-        panel_top + 211,
-        0.48,
-    )
-    centered(f"Best combo {score.max_combo}", panel_top + 246, 0.52)
-    centered("Press R to replay", panel_bottom - 25, 0.55, (230, 230, 230))
-
-
 def run_sound_test() -> bool:
     """Play the opening melody without opening the camera or hand model."""
     audio = AudioEngine(ALL_PITCHES)
@@ -947,7 +835,7 @@ def run_sound_test() -> bool:
 
 
 def main() -> None:
-    """Run the timed song challenge, free play, and privacy views."""
+    """Run the portfolio interface, timed challenge, and free-play mode."""
     camera = cv2.VideoCapture(CAMERA_INDEX)
 
     if not camera.isOpened():
@@ -976,6 +864,11 @@ def main() -> None:
             game_mode = GAME_MODE_CHALLENGE
             rhythm_round = RhythmRound(started_at=previous_frame_time)
             privacy_renderer = PrivacyRenderer(PrivacyMode.CAMERA)
+            screen = AppScreen.TITLE
+            show_help = False
+            help_opened_at: float | None = None
+            show_debug = False
+            smoothed_fps: float | None = None
 
             while True:
                 frame_read_successfully, frame = camera.read()
@@ -996,10 +889,12 @@ def main() -> None:
                     previous_timestamp_ms + 1,
                 )
                 previous_timestamp_ms = timestamp_ms
+                inference_started_at = time.perf_counter()
                 detection_result = hand_landmarker.detect_for_video(
                     mp_image,
                     timestamp_ms,
                 )
+                inference_ms = (time.perf_counter() - inference_started_at) * 1000
 
                 frame_height, frame_width = mirrored_frame.shape[:2]
                 current_time = time.monotonic()
@@ -1016,13 +911,29 @@ def main() -> None:
                     if motion.strike_direction is not None
                 }
 
-                elapsed_seconds = min(
-                    current_time - previous_frame_time,
-                    MAX_FRAME_TIME_SECONDS,
+                raw_frame_seconds = current_time - previous_frame_time
+                elapsed_seconds = max(
+                    0.0,
+                    min(
+                        raw_frame_seconds,
+                        MAX_FRAME_TIME_SECONDS,
+                    ),
                 )
+                if raw_frame_seconds > 0:
+                    instantaneous_fps = 1.0 / raw_frame_seconds
+                    smoothed_fps = (
+                        instantaneous_fps
+                        if smoothed_fps is None
+                        else smoothed_fps * 0.85 + instantaneous_fps * 0.15
+                    )
                 previous_frame_time = current_time
 
-                if game_mode == GAME_MODE_CHALLENGE:
+                node_hits: list[NodeHit] = []
+                if (
+                    screen is AppScreen.GAMEPLAY
+                    and not show_help
+                    and game_mode == GAME_MODE_CHALLENGE
+                ):
                     for event in rhythm_round.due_events(current_time):
                         active_nodes.append(
                             create_challenge_node(
@@ -1034,7 +945,7 @@ def main() -> None:
                                 active_nodes,
                             )
                         )
-                    active_nodes, node_hits, new_misses = update_challenge_nodes(
+                    active_nodes, node_hits, _ = update_challenge_nodes(
                         active_nodes,
                         current_time,
                         fingertip_motions,
@@ -1046,7 +957,9 @@ def main() -> None:
                         + rhythm_round.score.good
                     )
                     miss_count = rhythm_round.score.misses
-                else:
+                    if rhythm_round.phase_at(current_time) is RoundPhase.RESULTS:
+                        screen = AppScreen.RESULTS
+                elif screen is AppScreen.GAMEPLAY and not show_help:
                     if (
                         current_time - last_spawn_time >= NODE_SPAWN_INTERVAL_SECONDS
                         and len(active_nodes) < MAX_ACTIVE_NODES
@@ -1069,12 +982,13 @@ def main() -> None:
                     hit_count += len(node_hits)
                     miss_count += new_misses
 
-                play_node_hits(
-                    node_hits,
-                    audio,
-                    melody,
-                    game_mode == GAME_MODE_CHALLENGE,
-                )
+                if node_hits:
+                    play_node_hits(
+                        node_hits,
+                        audio,
+                        melody,
+                        game_mode == GAME_MODE_CHALLENGE,
+                    )
                 if not audio.enabled and audio.error_message != reported_audio_error:
                     print(audio.error_message)
                     print("Check your sound output and restart Air Rhythm to reconnect.")
@@ -1122,40 +1036,144 @@ def main() -> None:
                     if current_time - effect.started_at < HIT_EFFECT_DURATION_SECONDS
                 ]
 
+                hand_count = len(detection_result.hand_landmarks)
+                if hand_count == 0:
+                    motion_status = "NO HAND"
+                elif active_strikes:
+                    motion_status = " + ".join(sorted(active_strikes))
+                else:
+                    motion_status = "NO DIRECTIONAL STRIKE"
+                debug_info = {
+                    "fps": "--" if smoothed_fps is None else f"{smoothed_fps:.1f}",
+                    "hands": hand_count,
+                    "landmarks": sum(
+                        len(hand_landmarks)
+                        for hand_landmarks in detection_result.hand_landmarks
+                    ),
+                    "confidence": handedness_confidences(detection_result),
+                    "inference_ms": f"{inference_ms:.1f}",
+                    "gesture": motion_status,
+                }
+                privacy_label = PRIVACY_LABELS[privacy_renderer.mode]
+                sound_label = audio_status_label(audio)
+
                 display_frame = privacy_renderer.apply(
                     mirrored_frame,
                     detection_result.hand_landmarks,
                 )
-                draw_falling_nodes(
-                    display_frame,
-                    active_nodes,
-                    current_time if game_mode == GAME_MODE_CHALLENGE else None,
+                presentation_time = (
+                    help_opened_at
+                    if (
+                        show_help
+                        and screen is AppScreen.GAMEPLAY
+                        and help_opened_at is not None
+                    )
+                    else current_time
                 )
-                draw_hit_effects(display_frame, hit_effects, current_time)
-                draw_status_overlay(
-                    display_frame,
-                    len(detection_result.hand_landmarks),
-                    hit_count,
-                    miss_count,
-                    active_strikes,
-                    audio,
-                    privacy_renderer.mode,
-                    game_mode,
-                    rhythm_round,
-                    current_time,
-                )
+                if screen is AppScreen.GAMEPLAY and show_debug:
+                    # Put telemetry behind interactive graphics so a falling
+                    # target can never disappear under the optional panel.
+                    ui.draw_debug_overlay(
+                        display_frame,
+                        debug_info,
+                        top_offset=max(50, int(frame_height * 0.13)),
+                    )
+                if screen is not AppScreen.TITLE:
+                    draw_falling_nodes(
+                        display_frame,
+                        active_nodes,
+                        (
+                            presentation_time
+                            if game_mode == GAME_MODE_CHALLENGE
+                            else None
+                        ),
+                    )
+                    draw_hit_effects(display_frame, hit_effects, current_time)
 
-                if game_mode == GAME_MODE_CHALLENGE:
-                    if rhythm_round.phase_at(current_time) is RoundPhase.RESULTS:
-                        draw_results_screen(display_frame, rhythm_round)
-                    else:
-                        draw_countdown(display_frame, rhythm_round, current_time)
-
-                # Draw tracking last. Its 21 landmark points and connections
-                # remain obvious in every privacy setting and on the results view.
+                # The skeleton is deliberately part of the live presentation.
+                # It makes the MediaPipe landmark output visible to a viewer.
                 for hand_landmarks in detection_result.hand_landmarks:
                     draw_hand_skeleton(display_frame, hand_landmarks)
                 draw_strike_feedback(display_frame, fingertip_motions)
+
+                if screen is AppScreen.TITLE:
+                    ui.draw_title_screen(
+                        display_frame,
+                        hand_count=hand_count,
+                        privacy_label=privacy_label,
+                        sound_label=sound_label,
+                        current_time=current_time,
+                    )
+                    if show_debug:
+                        ui.draw_debug_overlay(display_frame, debug_info)
+                elif screen is AppScreen.GAMEPLAY:
+                    challenge_mode = game_mode == GAME_MODE_CHALLENGE
+                    score = rhythm_round.score
+                    ui.draw_game_hud(
+                        display_frame,
+                        hands=hand_count,
+                        score=score.score if challenge_mode else hit_count * 100,
+                        combo=score.combo if challenge_mode else 0,
+                        progress=(
+                            rhythm_round.progress_at(presentation_time)
+                            if challenge_mode
+                            else 0.0
+                        ),
+                        hits=hit_count,
+                        misses=miss_count,
+                        mode_label="Challenge" if challenge_mode else "Free play",
+                        song_label=(
+                            MELODY_TITLE
+                            if challenge_mode
+                            else "Four-instrument free play"
+                        ),
+                        privacy_label=privacy_label,
+                        sound_label=sound_label,
+                    )
+                    if challenge_mode:
+                        remaining = rhythm_round.countdown_remaining(
+                            presentation_time
+                        )
+                        if remaining > 0:
+                            ui.draw_countdown(
+                                display_frame,
+                                str(max(1, math.ceil(remaining))),
+                                progress=(
+                                    1.0
+                                    - remaining / rhythm_round.countdown_seconds
+                                    if rhythm_round.countdown_seconds > 0
+                                    else 1.0
+                                ),
+                                current_time=presentation_time,
+                            )
+                        elif presentation_time - rhythm_round.song_start_time < 0.5:
+                            ui.draw_countdown(
+                                display_frame,
+                                "GO!",
+                                progress=1.0,
+                                current_time=presentation_time,
+                            )
+                else:
+                    score = rhythm_round.score
+                    ui.draw_results(
+                        display_frame,
+                        score=score.score,
+                        accuracy=score.accuracy,
+                        rank=score.rank,
+                        perfect=score.perfect,
+                        great=score.great,
+                        good=score.good,
+                        misses=score.misses,
+                        max_combo=score.max_combo,
+                        song_label=f"{MELODY_TITLE} challenge",
+                        replay_hint="R / SPACE  Replay     T  Title",
+                    )
+                    if show_debug:
+                        ui.draw_debug_overlay(display_frame, debug_info)
+
+                if show_help:
+                    ui.draw_help_overlay(display_frame)
+
                 cv2.imshow(WINDOW_TITLE, display_frame)
 
                 pressed_key = cv2.waitKey(1) & 0xFF
@@ -1163,15 +1181,39 @@ def main() -> None:
                     break
                 if pressed_key == ord("p"):
                     privacy_renderer.cycle()
-                if pressed_key == ord("m"):
+                elif pressed_key == ord("m"):
                     audio.set_muted(not audio.muted)
-                if pressed_key in (ord("1"), ord("2"), ord("r")):
-                    if pressed_key == ord("1"):
-                        game_mode = GAME_MODE_CHALLENGE
-                    elif pressed_key == ord("2"):
-                        game_mode = GAME_MODE_FREE_PLAY
-
-                    rhythm_round.reset(started_at=current_time)
+                elif pressed_key == ord("h"):
+                    if show_help:
+                        if (
+                            screen is AppScreen.GAMEPLAY
+                            and help_opened_at is not None
+                        ):
+                            pause_seconds = max(0.0, current_time - help_opened_at)
+                            if game_mode == GAME_MODE_CHALLENGE:
+                                rhythm_round.delay_timeline(pause_seconds)
+                                for node in active_nodes:
+                                    if node.target_time is not None:
+                                        node.target_time += pause_seconds
+                                    if node.spawn_time is not None:
+                                        node.spawn_time += pause_seconds
+                            else:
+                                last_spawn_time += pause_seconds
+                            previous_frame_time = current_time
+                            fingertip_history.clear()
+                        show_help = False
+                        help_opened_at = None
+                    else:
+                        show_help = True
+                        help_opened_at = current_time
+                        audio.stop_all()
+                elif pressed_key == ord("d"):
+                    show_debug = not show_debug
+                elif pressed_key in (ord("t"), 27):
+                    screen = AppScreen.TITLE
+                    game_mode = GAME_MODE_CHALLENGE
+                    show_help = False
+                    help_opened_at = None
                     melody.reset()
                     audio.stop_all()
                     active_nodes.clear()
@@ -1179,8 +1221,37 @@ def main() -> None:
                     fingertip_history.clear()
                     hit_count = 0
                     miss_count = 0
-                    previous_frame_time = current_time
-                    last_spawn_time = current_time - NODE_SPAWN_INTERVAL_SECONDS
+                else:
+                    requested_mode = None
+                    if pressed_key == ord("1"):
+                        requested_mode = GAME_MODE_CHALLENGE
+                    elif pressed_key == ord("2"):
+                        requested_mode = GAME_MODE_FREE_PLAY
+                    elif pressed_key == ord("r"):
+                        requested_mode = game_mode
+                    elif pressed_key == ord(" ") and screen in (
+                        AppScreen.TITLE,
+                        AppScreen.RESULTS,
+                    ):
+                        requested_mode = GAME_MODE_CHALLENGE
+
+                    if requested_mode is not None:
+                        game_mode = requested_mode
+                        screen = AppScreen.GAMEPLAY
+                        show_help = False
+                        help_opened_at = None
+                        rhythm_round.reset(started_at=current_time)
+                        melody.reset()
+                        audio.stop_all()
+                        active_nodes.clear()
+                        hit_effects.clear()
+                        fingertip_history.clear()
+                        hit_count = 0
+                        miss_count = 0
+                        previous_frame_time = current_time
+                        last_spawn_time = (
+                            current_time - NODE_SPAWN_INTERVAL_SECONDS
+                        )
     finally:
         camera.release()
         audio.close()
