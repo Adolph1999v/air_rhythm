@@ -113,6 +113,32 @@ class RhythmRoundTests(unittest.TestCase):
         )
         self.assertLess(self.round.spawn_time(0), self.round.song_start_time)
 
+    def test_ui_progress_uses_song_clock_and_clamps(self):
+        self.assertEqual(self.round.progress_at(99.0), 0.0)
+        self.assertEqual(self.round.progress_at(self.round.song_start_time), 0.0)
+        midway = self.round.song_start_time + (
+            self.chart[-1].target_offset + GOOD_WINDOW_SECONDS
+        ) / 2
+        self.assertAlmostEqual(self.round.progress_at(midway), 0.5)
+        self.assertEqual(self.round.progress_at(999.0), 1.0)
+        with self.assertRaises(ValueError):
+            self.round.progress_at(float("nan"))
+
+    def test_help_pause_moves_future_beats_without_resetting_progress(self):
+        original_target = self.round.target_time(1)
+        self.round.due_events(102.06)
+        self.round.judge_hit(0, self.round.target_time(0))
+
+        self.round.delay_timeline(2.5)
+
+        self.assertAlmostEqual(self.round.target_time(1), original_target + 2.5)
+        self.assertEqual(self.round.resolved_count, 1)
+        self.assertEqual(self.round.score.perfect, 1)
+        self.assertEqual(self.round.due_events(104.94), ())
+        self.assertEqual(self.round.due_events(104.95), (self.chart[2],))
+        with self.assertRaises(ValueError):
+            self.round.delay_timeline(-0.1)
+
     def test_one_slow_camera_frame_emits_every_node_that_became_due(self):
         self.assertEqual(self.round.due_events(101.64), ())
         self.assertEqual(

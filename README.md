@@ -1,12 +1,14 @@
 # Air Rhythm
 
-Air Rhythm is a camera-controlled musical game built with Python, OpenCV, and MediaPipe. Catch falling circles with your fingertips to play a recognisable melody, or use free play to make your own tune.
+Air Rhythm is an interactive computer-vision portfolio project built with Python, OpenCV, and MediaPipe. It turns live hand landmarks into musical input: move your fingertips through falling notes to play a recognisable melody, receive timing feedback, or experiment in free play.
 
-The project is being developed phase by phase as a practical computer-vision learning project.
+The rhythm-game format makes the vision pipeline easy to see, but the main goal is practical OpenCV and ML/AI learning. The project is developed phase by phase to demonstrate real-time camera processing, landmark tracking, motion analysis, collision detection, audio timing, measurement, and honest technical communication to employers and recruiters.
+
+MediaPipe supplies the **pretrained** Hand Landmarker used to find hands and their 21 landmarks. The surrounding pipeline—including camera handling, landmark history, fingertip paths, interaction logic, rhythm timing, audio, privacy rendering, and interface—is project engineering built around that model. MediaPipe was not trained by this project. A future milestone will add and evaluate an original temporal gesture classifier trained on recorded landmark sequences.
 
 ## Project status
 
-Phases 1–4 are complete. Air Rhythm now has a timed song challenge, free play, scoring, and privacy views. Colored circles fall from the top of the full camera frame at varied horizontal positions. Fingertip contact drives the music, while a shrinking halo teaches the player when to hit.
+Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now has a portfolio-ready title screen, timed song challenge, free play, scoring, privacy views, and an optional technical overlay. Coloured circles fall from the top of the full camera frame at varied horizontal positions. Fingertip contact drives the music, while a shrinking halo teaches the player when to hit.
 
 ### Current capabilities
 
@@ -27,18 +29,26 @@ Phases 1–4 are complete. Air Rhythm now has a timed song challenge, free play,
 - An absolute beat clock that stays aligned after a slow camera frame
 - Shrinking timing halos with `PERFECT`, `GREAT`, and `GOOD` accuracy grades
 - Score, combo, accuracy, final rank, countdown, and results screen
+- A polished title screen and recording-friendly visual style
+- A compact gameplay HUD with score, combo, hit/miss totals, and song progress
+- Toggleable help and technical overlays
+- Live FPS, MediaPipe inference time, detected-hand count, landmark count, and mean handedness-classification confidence in the technical view
+- A visible OpenCV + MediaPipe project badge
 - Four colour-coded instruments and a free-play mode
 - Hands-only privacy, skeleton-only privacy, and normal-camera views
 - Mute, restart, and a camera-free sound check
 
 ### Next milestone
 
-Phase 5 will focus on making the project ready to showcase:
+The next work will strengthen the evidence behind the showcase:
 
-- Camera and audio-delay calibration
-- Adjustable difficulty and more song charts
-- A polished title/tutorial screen
-- Recording-friendly layout and performance tuning
+- Measure camera capture, MediaPipe inference, game update, rendering, and audio latency.
+- Add repeatable FPS, frame-time, and robustness benchmarks.
+- Calibrate camera and audio delay from measured results.
+- Collect labelled landmark sequences for a custom temporal gesture classifier.
+- Compare the trained classifier with the current rule-based movement logic using precision, recall, F1 score, and a confusion matrix.
+
+The complete career-focused roadmap, measurable completion checks, and deferred game ideas are in [FUTURE_PLAN.md](FUTURE_PLAN.md).
 
 ## Play music with your hands
 
@@ -73,14 +83,18 @@ Select the camera window before pressing a key.
 
 | Key | Action |
 | --- | --- |
+| `Space` | Start from the title screen or replay after Results |
 | `1` | Restart the timed *Für Elise* challenge |
 | `2` | Free play: invent your own tune |
 | `P` | Cycle hands only → skeleton only → normal camera |
 | `M` | Mute/unmute audio |
 | `R` | Restart the current mode, melody, and counters |
+| `H` | Show or hide Help; an active round pauses safely |
+| `D` | Show or hide the technical overlay |
+| `T` or `Esc` | Return to the title screen |
 | `Q` | Quit |
 
-Changing mode starts a fresh round. Muting clears ringing notes, but the game and score continue; press `R` to return to the beginning.
+Changing mode starts a fresh round. Muting clears ringing notes, but the game and score continue; press `R` to return to the beginning. Opening Help safely pauses the active round and moves its beat clock forward by the paused time. The optional technical overlay exposes live computer-vision information for demonstrations and debugging.
 
 ## Privacy views
 
@@ -104,8 +118,12 @@ Webcam frame
     -> fingertip paths are checked against falling circles
     -> the beat clock compares contact time with each node's target time
     -> successful hits trigger prepared sounds in the background
-    -> OpenCV draws the game and hand tracking
+    -> OpenCV draws the game, interface, and hand-tracking skeleton
 ```
+
+MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The application converts the model's normalized output into pixel positions, keeps short movement histories, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the motion, interaction, timing, and presentation systems are original application engineering.
+
+Press `D` during the demonstration to reveal the technical overlay. It makes the active pipeline visible through live FPS, MediaPipe inference time, hand count, processed landmark count, and the mean Left/Right handedness-classification confidence when available. That value is not presented as overall tracking accuracy. Press `D` again for the cleaner recording view.
 
 The sound engine prepares short waveforms once at startup. A waveform is a list of numbers telling the speaker how to move. On a hit, the game requests a prepared sound instead of loading a file or generating a new tone in the camera loop. A separate audio callback mixes ringing notes together, allowing quick consecutive hits without cutting the previous sound off.
 
@@ -148,9 +166,11 @@ audio_engine.py              Prepared tones and background audio mixing
 music.py                     Instruments, melody notes, and note progression
 privacy.py                   Hands-only and skeleton-only display rendering
 rhythm_game.py               Song clock, timing grades, score, and round state
+ui.py                        Reusable title, HUD, help, debug, and results drawing
 models/hand_landmarker.task  Local MediaPipe hand model
 requirements.txt             Python dependencies
 tests/                       Camera-free game, privacy, music, and audio checks
+FUTURE_PLAN.md               Career-focused milestones and deferred ideas
 ```
 
 Run the automated checks without opening the camera or speakers:
@@ -165,5 +185,9 @@ Run the automated checks without opening the camera or speakers:
 - [x] Phase 2 — Two-hand landmark tracking
 - [x] Phase 3 — Free-falling nodes and hybrid fingertip collision
 - [x] Phase 4 — Sound, beat scheduling, scoring, and first music chart
-- [ ] Phase 5 — Calibration, visual polish, packaging, and release
-- [ ] Future — AI-generated rhythm challenges
+- [x] Phase 5 implementation — Portfolio UI, compact HUD, help, progress, and technical overlay
+- [ ] Phase 5 validation — Live 720p/1080p camera check and a clear 30-second recording
+- [ ] Next — Measured computer-vision performance, latency, calibration, and robustness
+- [ ] Later — Custom temporal gesture dataset, model training, and evaluation
+
+See [FUTURE_PLAN.md](FUTURE_PLAN.md) for definitions of done, learning outcomes, and optional product ideas kept outside the current portfolio scope.

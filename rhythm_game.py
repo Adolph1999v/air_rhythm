@@ -23,7 +23,7 @@ GOOD_WINDOW_SECONDS = 0.42
 
 
 class RoundPhase(Enum):
-    """The three screens/states used by one song challenge."""
+    """The three timing phases inside one song challenge."""
 
     COUNTDOWN = "COUNTDOWN"
     PLAYING = "PLAYING"
@@ -255,6 +255,26 @@ class RhythmRound:
     def countdown_remaining(self, now: float) -> float:
         """Return countdown time left, stopping cleanly at zero."""
         return max(0.0, self.song_start_time - now)
+
+    def progress_at(self, now: float) -> float:
+        """Return smooth song progress from zero to one for the UI."""
+        if not math.isfinite(now):
+            raise ValueError("now must be finite")
+        if not self.chart:
+            return 1.0
+        if self.phase_at(now) is RoundPhase.RESULTS:
+            return 1.0
+        challenge_duration = self.chart[-1].target_offset + GOOD_WINDOW_SECONDS
+        if challenge_duration <= 0:
+            return 1.0
+        elapsed = now - self.song_start_time
+        return max(0.0, min(1.0, elapsed / challenge_duration))
+
+    def delay_timeline(self, pause_seconds: float) -> None:
+        """Move all future beat times forward after an interface pause."""
+        if not math.isfinite(pause_seconds) or pause_seconds < 0:
+            raise ValueError("pause_seconds must be non-negative and finite")
+        self.started_at += pause_seconds
 
     def _event(self, event_or_index: ChartEvent | int) -> ChartEvent:
         index = (
