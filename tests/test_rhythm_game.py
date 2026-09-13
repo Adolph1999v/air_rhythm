@@ -23,6 +23,7 @@ class MelodyChartTests(unittest.TestCase):
 
         self.assertEqual(tuple(event.pitch for event in chart), MELODY_NOTES)
         self.assertEqual(chart[0].target_offset, DEFAULT_LEAD_IN_SECONDS)
+        self.assertEqual(DEFAULT_LEAD_IN_SECONDS, NODE_TRAVEL_SECONDS)
         self.assertAlmostEqual(
             chart[1].target_offset,
             DEFAULT_LEAD_IN_SECONDS + MELODY_STEP_SECONDS[0] * 2.0,
@@ -95,23 +96,34 @@ class RoundScoreTests(unittest.TestCase):
 class RhythmRoundTests(unittest.TestCase):
     def setUp(self):
         self.chart = (
-            ChartEvent(0, 60, 0.65),
-            ChartEvent(1, 62, 1.05),
-            ChartEvent(2, 64, 1.45),
+            ChartEvent(0, 60, 2.0),
+            ChartEvent(1, 62, 2.4),
+            ChartEvent(2, 64, 2.8),
         )
         self.round = RhythmRound(started_at=100.0, chart=self.chart)
 
-    def test_countdown_boundary_and_first_target_leave_a_clear_go_moment(self):
+    def test_first_circle_enters_exactly_when_the_countdown_reaches_go(self):
         self.assertIs(self.round.phase_at(102.999), RoundPhase.COUNTDOWN)
         self.assertIs(self.round.phase_at(103.0), RoundPhase.PLAYING)
         self.assertEqual(self.round.countdown_remaining(101.5), 1.5)
         self.assertEqual(self.round.countdown_remaining(103.0), 0.0)
-        self.assertAlmostEqual(self.round.target_time(0), 103.65)
+        self.assertAlmostEqual(self.round.target_time(0), 105.0)
         self.assertAlmostEqual(
             self.round.spawn_time(0),
             self.round.target_time(0) - NODE_TRAVEL_SECONDS,
         )
-        self.assertLess(self.round.spawn_time(0), self.round.song_start_time)
+        self.assertEqual(self.round.spawn_time(0), self.round.song_start_time)
+        self.assertEqual(self.round.due_events(102.999), ())
+        self.assertEqual(self.round.due_events(103.0), (self.chart[0],))
+
+    def test_default_song_chart_also_holds_its_first_circle_until_go(self):
+        default_round = RhythmRound(started_at=100.0)
+
+        self.assertEqual(default_round.due_events(102.999), ())
+        self.assertEqual(
+            default_round.due_events(default_round.song_start_time),
+            (default_round.chart[0],),
+        )
 
     def test_ui_progress_uses_song_clock_and_clamps(self):
         self.assertEqual(self.round.progress_at(99.0), 0.0)
@@ -126,7 +138,7 @@ class RhythmRoundTests(unittest.TestCase):
 
     def test_help_pause_moves_future_beats_without_resetting_progress(self):
         original_target = self.round.target_time(1)
-        self.round.due_events(102.06)
+        self.round.due_events(103.06)
         self.round.judge_hit(0, self.round.target_time(0))
 
         self.round.delay_timeline(2.5)
@@ -134,18 +146,18 @@ class RhythmRoundTests(unittest.TestCase):
         self.assertAlmostEqual(self.round.target_time(1), original_target + 2.5)
         self.assertEqual(self.round.resolved_count, 1)
         self.assertEqual(self.round.score.perfect, 1)
-        self.assertEqual(self.round.due_events(104.94), ())
-        self.assertEqual(self.round.due_events(104.95), (self.chart[2],))
+        self.assertEqual(self.round.due_events(105.89), ())
+        self.assertEqual(self.round.due_events(105.90), (self.chart[1],))
         with self.assertRaises(ValueError):
             self.round.delay_timeline(-0.1)
 
     def test_one_slow_camera_frame_emits_every_node_that_became_due(self):
-        self.assertEqual(self.round.due_events(101.64), ())
+        self.assertEqual(self.round.due_events(102.999), ())
         self.assertEqual(
-            self.round.due_events(102.06),
+            self.round.due_events(103.45),
             self.chart[:2],
         )
-        self.assertEqual(self.round.due_events(102.06), ())
+        self.assertEqual(self.round.due_events(103.45), ())
         self.assertEqual(self.round.due_events(999.0), self.chart[2:])
 
     def test_hits_use_absolute_target_time_and_results_wait_for_resolution(self):
@@ -186,8 +198,8 @@ class RhythmRoundTests(unittest.TestCase):
         self.assertEqual(self.round.resolved_count, 0)
         self.assertEqual(self.round.remaining_count, 3)
         self.assertIs(self.round.phase_at(200.0), RoundPhase.COUNTDOWN)
-        self.assertEqual(self.round.due_events(201.64), ())
-        self.assertEqual(self.round.due_events(201.65), (self.chart[0],))
+        self.assertEqual(self.round.due_events(202.999), ())
+        self.assertEqual(self.round.due_events(203.0), (self.chart[0],))
 
 
 if __name__ == "__main__":

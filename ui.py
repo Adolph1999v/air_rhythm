@@ -14,24 +14,24 @@ import cv2
 
 # OpenCV colours use blue, green, red (BGR) order.
 INK = (10, 12, 22)
-TEXT_SHADOW = (26, 29, 41)
-PANEL = (22, 25, 40)
-PANEL_LIGHT = (35, 41, 61)
+TEXT_SHADOW = (20, 23, 34)
+PANEL = (24, 27, 42)
+PANEL_LIGHT = (48, 55, 76)
 WHITE = (244, 248, 255)
-MUTED = (174, 184, 205)
+MUTED = (176, 187, 211)
 CYAN = (255, 222, 67)
 BLUE = (255, 137, 44)
 MAGENTA = (229, 72, 255)
 GREEN = (112, 246, 104)
 GOLD = (75, 213, 255)
 RED = (90, 95, 255)
-FONT = cv2.FONT_HERSHEY_DUPLEX
+FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 DEFAULT_CONTROLS = (
     ("SPACE", "Start / replay"),
     ("1 / 2", "Challenge / free play"),
     ("R", "Restart current mode"),
-    ("P", "Privacy views"),
+    ("P", "Input inset privacy"),
     ("M", "Mute"),
     ("D", "CV / ML details"),
     ("T / ESC", "Return to title"),
@@ -228,7 +228,7 @@ def draw_glass_panel(
     alpha: float = 0.78,
     radius: int | None = None,
 ) -> Any:
-    """Draw a dark translucent panel that stays readable over a camera feed."""
+    """Draw a restrained glass surface for the generated performance stage."""
     rect = _clip_rect(frame, top_left, bottom_right)
     scale = _ui_scale(frame)
     corner_radius = max(2, int(14 * scale)) if radius is None else max(0, radius)
@@ -238,17 +238,24 @@ def draw_glass_panel(
     cv2.addWeighted(overlay, opacity, frame, 1.0 - opacity, 0, frame)
     left, top, right, bottom = rect
     border_color = accent if accent is not None else PANEL_LIGHT
-    cv2.rectangle(
-        frame, (left, top), (right, bottom), border_color,
-        max(1, int(1.5 * scale)), cv2.LINE_AA,
-    )
-    if accent is not None and bottom > top:
+    # A thin top signal keeps hierarchy without the heavy, brightly bordered
+    # card look of the earlier interface.
+    if accent is not None and bottom > top and right > left:
         cv2.line(
             frame,
-            (left, top + 1),
-            (left, bottom - 1),
+            (left + corner_radius, top + 1),
+            (right - corner_radius, top + 1),
             accent,
-            max(2, int(4 * scale)),
+            max(1, int(1.5 * scale)),
+            cv2.LINE_AA,
+        )
+    if border_color is not None:
+        cv2.line(
+            frame,
+            (left + corner_radius, bottom - 1),
+            (right - corner_radius, bottom - 1),
+            border_color,
+            1,
             cv2.LINE_AA,
         )
     return frame
@@ -342,133 +349,157 @@ def draw_title_screen(
     current_time: float,
     ready_progress: float | None = None,
 ) -> Any:
-    """Draw the opening screen with a clear AI/ML portfolio message."""
+    """Draw an airy landing screen over the person-free performance stage."""
     width, height = _frame_size(frame)
     scale = _ui_scale(frame)
-    _draw_background_tint(frame, 0.42)
-    draw_brand_badge(frame)
-
-    panel_left = max(6, int(width * 0.14))
-    panel_right = min(width - 7, int(width * 0.86))
-    panel_top = max(34, int(height * 0.14))
-    panel_bottom = min(height - 8, int(height * 0.68))
-    draw_glass_panel(
-        frame, (panel_left, panel_top), (panel_right, panel_bottom),
-        accent=MAGENTA, alpha=0.84,
-    )
-
-    pulse_time = float(current_time) if isinstance(current_time, (int, float)) else 0.0
-    pulse = 0.5 + 0.5 * math.sin(pulse_time * 3.2) if math.isfinite(pulse_time) else 0.5
+    _draw_background_tint(frame, 0.18)
     center_x = width // 2
-    title_y = panel_top + max(32, int(74 * scale))
+    margin = max(6, int(18 * scale))
+    pulse_time = float(current_time) if isinstance(current_time, (int, float)) else 0.0
+    pulse = 0.5 + 0.5 * math.sin(pulse_time * 2.4) if math.isfinite(pulse_time) else 0.5
+
+    badge_right = min(width - margin, margin + max(112, int(210 * scale)))
+    badge_bottom = min(height - margin, margin + max(23, int(38 * scale)))
+    draw_glass_panel(
+        frame,
+        (margin, margin),
+        (badge_right, badge_bottom),
+        accent=CYAN,
+        alpha=0.48,
+        radius=max(8, int(22 * scale)),
+    )
+    draw_text(
+        frame,
+        "LIVE RHYTHM STAGE",
+        (margin + max(8, int(14 * scale)), badge_bottom - max(7, int(12 * scale))),
+        max(0.22, 0.39 * scale),
+        CYAN,
+        1,
+        max_width=max(30, badge_right - margin - 18),
+        min_scale=0.15,
+    )
+
+    title_y = max(42, int(height * 0.31))
     title_scale = fit_text_scale(
-        "AIR RHYTHM", max(30, panel_right - panel_left - 30),
-        max(0.8, 2.0 * scale), 0.42, max(2, int(4 * scale)),
+        "AIR RHYTHM",
+        max(40, int(width * 0.74)),
+        max(0.78, 2.05 * scale),
+        0.42,
+        max(2, int(3 * scale)),
     )
     draw_text(
-        frame, "AIR RHYTHM", (center_x, title_y), title_scale,
-        WHITE, max(2, int(3 * scale)), align="center",
-        max_width=max(30, panel_right - panel_left - 24),
+        frame,
+        "AIR RHYTHM",
+        (center_x, title_y),
+        title_scale,
+        WHITE,
+        max(2, int(3 * scale)),
+        align="center",
+        max_width=max(40, int(width * 0.74)),
     )
-    underline_y = min(panel_bottom - 3, title_y + max(10, int(20 * scale)))
-    underline_half = max(15, int((panel_right - panel_left) * (0.15 + 0.03 * pulse)))
+    signal_y = min(height - 4, title_y + max(12, int(25 * scale)))
+    signal_half = max(20, int(width * (0.08 + 0.018 * pulse)))
     cv2.line(
-        frame, (center_x - underline_half, underline_y),
-        (center_x + underline_half, underline_y), CYAN,
-        max(1, int(3 * scale)), cv2.LINE_AA,
+        frame,
+        (center_x - signal_half, signal_y),
+        (center_x + signal_half, signal_y),
+        CYAN,
+        max(1, int(2 * scale)),
+        cv2.LINE_AA,
     )
 
-    sub_y = underline_y + max(18, int(37 * scale))
+    subtitle_y = signal_y + max(18, int(36 * scale))
     draw_text(
-        frame, "PLAY MUSIC WITH REAL-TIME HAND TRACKING",
-        (center_x, sub_y), max(0.38, 0.70 * scale), CYAN, 1,
-        align="center", max_width=max(20, panel_right - panel_left - 28),
-        min_scale=0.2,
+        frame,
+        "A PRIVATE PERFORMANCE STAGE FOR HAND-TRACKED MUSIC",
+        (center_x, subtitle_y),
+        max(0.29, 0.57 * scale),
+        CYAN,
+        1,
+        align="center",
+        max_width=max(40, int(width * 0.76)),
+        min_scale=0.17,
     )
-    detail_y = sub_y + max(17, int(32 * scale))
+    detail_y = subtitle_y + max(16, int(30 * scale))
     draw_text(
-        frame, "MediaPipe pretrained landmarks + custom gesture / collision logic",
-        (center_x, detail_y), max(0.32, 0.55 * scale), MUTED, 1,
-        align="center", max_width=max(20, panel_right - panel_left - 28),
-        min_scale=0.18,
+        frame,
+        "MediaPipe pretrained landmarks + custom gesture / collision logic",
+        (center_x, detail_y),
+        max(0.26, 0.45 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=max(40, int(width * 0.76)),
+        min_scale=0.16,
     )
 
-    feature_bottom = detail_y
-    if panel_right - panel_left >= 430 and panel_bottom - panel_top >= 250:
-        features = (
-            ("21 LANDMARKS", "PER HAND", CYAN),
-            ("MOTION RULES", "GESTURE SIGNAL", GOLD),
-            ("SWEPT PATH", "COLLISION CHECK", MAGENTA),
-        )
-        feature_top = detail_y + max(12, int(27 * scale))
-        feature_bottom = min(
-            panel_bottom - max(58, int(112 * scale)),
-            feature_top + max(31, int(58 * scale)),
-        )
-        inner_left = panel_left + max(12, int(35 * scale))
-        inner_right = panel_right - max(12, int(35 * scale))
-        feature_gap = max(5, int(12 * scale))
-        feature_width = max(
-            1,
-            (inner_right - inner_left - feature_gap * (len(features) - 1))
-            // len(features),
-        )
-        for index, (feature, detail, accent) in enumerate(features):
-            left = inner_left + index * (feature_width + feature_gap)
-            right = min(inner_right, left + feature_width)
-            draw_glass_panel(
-                frame, (left, feature_top), (right, feature_bottom),
-                accent=accent, alpha=0.58,
-            )
-            feature_center = (left + right) // 2
-            draw_text(
-                frame, feature,
-                (feature_center, feature_top + max(12, int(23 * scale))),
-                max(0.22, 0.37 * scale), WHITE, 1, align="center",
-                max_width=max(12, right - left - 14), min_scale=0.15,
-            )
-            draw_text(
-                frame, detail,
-                (feature_center, feature_bottom - max(5, int(10 * scale))),
-                max(0.18, 0.29 * scale), MUTED, 1, align="center",
-                max_width=max(12, right - left - 14), min_scale=0.13,
-            )
-
-    prompt_y = min(
-        panel_bottom - max(28, int(78 * scale)),
-        feature_bottom + max(24, int(48 * scale)),
-    )
     progress = None if ready_progress is None else _clamp01(ready_progress)
-    prompt = "PRESS SPACE TO START" if progress is None or progress >= 1.0 else "PREPARING HAND TRACKING"
-    prompt_color = GREEN if progress is None or progress >= 1.0 else GOLD
-    draw_text(
-        frame, prompt, (center_x, prompt_y), max(0.42, (0.70 + pulse * 0.05) * scale),
-        prompt_color, max(1, int(2 * scale)), align="center",
-        max_width=max(20, panel_right - panel_left - 28), min_scale=0.2,
+    ready = progress is None or progress >= 1.0
+    action = "SPACE  START CHALLENGE" if ready else "PREPARING LANDMARK INPUT"
+    action_color = GREEN if ready else GOLD
+    action_width = min(max(150, int(320 * scale)), max(80, int(width * 0.60)))
+    action_height = max(28, int(54 * scale))
+    action_top = min(
+        height - action_height - margin,
+        detail_y + max(18, int(38 * scale)),
     )
-    if progress is not None:
-        bar_left = panel_left + max(12, int(40 * scale))
-        bar_right = panel_right - max(12, int(40 * scale))
-        bar_top = min(panel_bottom - 10, prompt_y + max(8, int(14 * scale)))
-        bar_bottom = min(panel_bottom - 4, bar_top + max(4, int(7 * scale)))
-        cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), PANEL_LIGHT, -1)
-        fill_right = bar_left + round((bar_right - bar_left) * progress)
-        if fill_right > bar_left:
-            cv2.rectangle(frame, (bar_left, bar_top), (fill_right, bar_bottom), CYAN, -1)
-
-    status = f"Hands {max(0, _safe_int(hand_count))}/2  |  {privacy_label}  |  {sound_label}"
-    status_y = panel_bottom - max(9, int(20 * scale))
-    draw_text(
-        frame, status, (center_x, status_y), max(0.29, 0.46 * scale),
-        MUTED, 1, align="center", max_width=max(20, panel_right - panel_left - 24),
-        min_scale=0.18,
+    action_left = max(margin, center_x - action_width // 2)
+    action_right = min(width - margin, action_left + action_width)
+    draw_glass_panel(
+        frame,
+        (action_left, action_top),
+        (action_right, action_top + action_height),
+        accent=action_color,
+        alpha=0.62,
+        radius=action_height // 2,
     )
-
-    controls = "SPACE Start   1/2 Modes   H Help   D CV details   Q Quit"
     draw_text(
-        frame, controls, (center_x, height - max(5, int(13 * scale))),
-        max(0.27, 0.42 * scale), MUTED, 1, align="center",
-        max_width=max(20, width - 20), min_scale=0.17,
+        frame,
+        action,
+        (center_x, action_top + action_height - max(8, int(15 * scale))),
+        max(0.27, 0.48 * scale),
+        action_color,
+        1,
+        align="center",
+        max_width=max(35, action_right - action_left - 20),
+        min_scale=0.16,
+    )
+    if progress is not None and not ready:
+        _draw_progress_bar(
+            frame,
+            action_left + max(10, int(18 * scale)),
+            action_top + action_height - max(7, int(12 * scale)),
+            action_right - max(10, int(18 * scale)),
+            action_top + action_height - max(4, int(7 * scale)),
+            progress,
+        )
+
+    status = (
+        f"INPUT {str(privacy_label).upper()}  |  "
+        f"HANDS {max(0, _safe_int(hand_count))}/2  |  {str(sound_label).upper()}"
+    )
+    status_y = min(height - max(20, int(48 * scale)), action_top + action_height + max(21, int(39 * scale)))
+    draw_text(
+        frame,
+        status,
+        (center_x, status_y),
+        max(0.22, 0.37 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=max(40, int(width * 0.72)),
+        min_scale=0.15,
+    )
+    controls = "1 Challenge   2 Free play   H Help   D Technical view   Q Quit"
+    draw_text(
+        frame,
+        controls,
+        (margin, height - margin),
+        max(0.20, 0.34 * scale),
+        MUTED,
+        1,
+        max_width=max(45, int(width * 0.54)),
+        min_scale=0.14,
     )
     return frame
 
@@ -505,96 +536,134 @@ def draw_game_hud(
     sound_label: str,
     debug_info: Mapping[str, Any] | None = None,
 ) -> Any:
-    """Draw a slim gameplay HUD around the edges of the camera image."""
+    """Draw a quiet top rail, leaving most of the stage open for movement."""
     width, height = _frame_size(frame)
     scale = _ui_scale(frame)
     margin = max(5, int(14 * scale))
-    top = margin
-    panel_height = max(39, int(68 * scale))
-    bottom = min(height - margin - 1, top + panel_height)
-    gap = max(4, int(10 * scale))
-
-    left_width = max(105, int(width * 0.24))
-    right_width = max(105, int(width * 0.20))
-    left_right = min(width - margin - 2, margin + left_width)
-    right_left = max(margin + 2, width - margin - right_width)
-    centre_left = min(left_right + gap, width - margin - 1)
-    centre_right = max(centre_left, right_left - gap)
-
-    draw_glass_panel(frame, (margin, top), (left_right, bottom), accent=CYAN, alpha=0.72)
+    rail_top = margin
+    rail_bottom = min(height - margin - 1, rail_top + max(42, int(66 * scale)))
     draw_glass_panel(
-        frame, (centre_left, top), (centre_right, bottom),
-        accent=MAGENTA, alpha=0.72,
-    )
-    draw_glass_panel(frame, (right_left, top), (width - margin, bottom), accent=GREEN, alpha=0.72)
-
-    pad = max(7, int(13 * scale))
-    label_scale = max(0.25, 0.38 * scale)
-    value_scale = max(0.40, 0.70 * scale)
-    first_line = top + max(13, int(21 * scale))
-    second_line = min(bottom - 5, top + max(29, int(51 * scale)))
-    draw_text(frame, "SCORE", (margin + pad, first_line), label_scale, MUTED, 1)
-    draw_text(
-        frame, f"{max(0, _safe_int(score)):,}", (margin + pad, second_line),
-        value_scale, WHITE, max(1, int(2 * scale)),
-        max_width=max(20, left_right - margin - pad * 2), min_scale=0.2,
-    )
-    combo_text = f"COMBO x{max(0, _safe_int(combo))}"
-    draw_text(
-        frame, combo_text, (left_right - pad, first_line), label_scale,
-        GOLD if _safe_int(combo) else MUTED, 1, align="right",
-        max_width=max(30, left_width // 2), min_scale=0.17,
+        frame,
+        (margin, rail_top),
+        (width - margin, rail_bottom),
+        accent=CYAN,
+        alpha=0.48,
+        radius=max(10, int(20 * scale)),
     )
 
-    centre_x = (centre_left + centre_right) // 2
-    available_centre = max(20, centre_right - centre_left - pad * 2)
-    draw_text(
-        frame, str(song_label), (centre_x, first_line), max(0.28, 0.46 * scale),
-        WHITE, 1, align="center", max_width=available_centre, min_scale=0.18,
-    )
-    bar_left = centre_left + pad
-    bar_right = max(bar_left, centre_right - pad)
-    bar_top = min(bottom - 6, top + max(28, int(43 * scale)))
-    _draw_progress_bar(
-        frame, bar_left, bar_top, bar_right,
-        min(bottom - 4, bar_top + max(3, int(5 * scale))), progress,
-    )
+    pad = max(7, int(14 * scale))
+    first_line = rail_top + max(13, int(22 * scale))
+    second_line = rail_bottom - max(7, int(13 * scale))
+    left_right = min(width - margin, margin + max(135, int(width * 0.27)))
+    right_left = max(left_right + max(8, int(16 * scale)), width - margin - max(135, int(width * 0.23)))
+    center_left = left_right + max(7, int(14 * scale))
+    center_right = max(center_left + 1, right_left - max(7, int(14 * scale)))
 
-    status_x = right_left + pad
-    status_width = max(20, width - margin - status_x - pad)
     draw_text(
-        frame, f"HANDS {max(0, _safe_int(hands))}/2", (status_x, first_line),
-        label_scale, GREEN if _safe_int(hands) else MUTED, 1,
-        max_width=status_width, min_scale=0.16,
+        frame,
+        "SCORE",
+        (margin + pad, first_line),
+        max(0.22, 0.34 * scale),
+        MUTED,
+        1,
     )
     draw_text(
-        frame, f"{max(0, _safe_int(hits))} HIT  {max(0, _safe_int(misses))} MISS",
-        (status_x, second_line), max(0.24, 0.40 * scale), WHITE, 1,
-        max_width=status_width, min_scale=0.17,
-    )
-
-    footer_top = max(bottom + 2, height - max(29, int(43 * scale)))
-    draw_glass_panel(
-        frame, (margin, footer_top), (width - margin, height - margin),
-        accent=None, alpha=0.66,
-    )
-    footer_y = height - margin - max(6, int(11 * scale))
-    footer_left = f"{mode_label}  |  {privacy_label}  |  {sound_label}"
-    draw_text(
-        frame, footer_left, (margin + pad, footer_y), max(0.25, 0.40 * scale),
-        MUTED, 1, max_width=max(20, int(width * 0.62)), min_scale=0.16,
+        frame,
+        f"{max(0, _safe_int(score)):,}",
+        (margin + pad, second_line),
+        max(0.37, 0.67 * scale),
+        WHITE,
+        max(1, int(2 * scale)),
+        max_width=max(30, left_right - margin - pad * 2),
+        min_scale=0.20,
     )
     draw_text(
-        frame, "OpenCV + MediaPipe  |  H Help",
-        (width - margin - pad, footer_y), max(0.25, 0.40 * scale),
-        CYAN, 1, align="right", max_width=max(20, int(width * 0.36)),
+        frame,
+        f"x{max(0, _safe_int(combo))}",
+        (left_right - pad, second_line),
+        max(0.28, 0.45 * scale),
+        GOLD if _safe_int(combo) else MUTED,
+        1,
+        align="right",
+        max_width=max(25, int(width * 0.09)),
         min_scale=0.16,
+    )
+
+    center_x = (center_left + center_right) // 2
+    center_width = max(30, center_right - center_left)
+    draw_text(
+        frame,
+        f"{str(mode_label).upper()}  /  {song_label}",
+        (center_x, first_line),
+        max(0.22, 0.38 * scale),
+        WHITE,
+        1,
+        align="center",
+        max_width=center_width,
+        min_scale=0.15,
+    )
+    _draw_progress_bar(
+        frame,
+        center_left,
+        max(first_line + 4, second_line - max(5, int(8 * scale))),
+        center_right,
+        max(first_line + 7, second_line - max(2, int(4 * scale))),
+        progress,
+    )
+
+    right_width = max(30, width - margin - right_left - pad)
+    draw_text(
+        frame,
+        f"HANDS {max(0, _safe_int(hands))}/2",
+        (right_left, first_line),
+        max(0.22, 0.34 * scale),
+        GREEN if _safe_int(hands) else MUTED,
+        1,
+        max_width=right_width,
+        min_scale=0.15,
+    )
+    draw_text(
+        frame,
+        f"{max(0, _safe_int(hits))} HIT  |  {max(0, _safe_int(misses))} MISS",
+        (right_left, second_line),
+        max(0.22, 0.36 * scale),
+        WHITE,
+        1,
+        max_width=right_width,
+        min_scale=0.15,
+    )
+
+    footer_height = max(24, int(36 * scale))
+    footer_top = max(rail_bottom + 3, height - margin - footer_height)
+    footer_right = min(width - margin, margin + max(155, int(width * 0.54)))
+    draw_glass_panel(
+        frame,
+        (margin, footer_top),
+        (footer_right, height - margin),
+        accent=None,
+        alpha=0.42,
+        radius=footer_height // 2,
+    )
+    footer_text = f"{mode_label} | Input {privacy_label} | {sound_label} | H Help"
+    draw_text(
+        frame,
+        footer_text,
+        (margin + pad, height - margin - max(6, int(10 * scale))),
+        max(0.19, 0.31 * scale),
+        MUTED,
+        1,
+        max_width=max(50, footer_right - margin - pad * 2),
+        min_scale=0.14,
     )
 
     if debug_info is not None:
         combined_debug = dict(debug_info)
         combined_debug.setdefault("hands", hands)
-        draw_debug_overlay(frame, combined_debug, top_offset=bottom + gap)
+        draw_debug_overlay(
+            frame,
+            combined_debug,
+            top_offset=rail_bottom + max(4, int(10 * scale)),
+        )
     return frame
 
 
@@ -650,140 +719,147 @@ def draw_results(
     song_label: str = "Song challenge",
     replay_hint: str = "Press R to replay",
 ) -> Any:
-    """Draw a polished performance summary for the end of a demo round."""
+    """Draw a compact end-of-song summary without covering the stage."""
     width, height = _frame_size(frame)
     scale = _ui_scale(frame)
-    _draw_background_tint(frame, 0.48)
-    panel_left = max(5, int(width * 0.15))
-    panel_right = min(width - 6, int(width * 0.85))
-    panel_top = max(5, int(height * 0.11))
-    panel_bottom = min(height - 6, int(height * 0.89))
+    _draw_background_tint(frame, 0.22)
+    margin = max(6, int(18 * scale))
+    panel_left = max(margin, int(width * 0.10))
+    panel_right_ratio = 0.64 if width >= 800 else 0.88
+    panel_right = min(width - margin, int(width * panel_right_ratio))
+    panel_top = max(margin, int(height * 0.16))
+    panel_bottom = min(height - margin, int(height * 0.82))
     draw_glass_panel(
-        frame, (panel_left, panel_top), (panel_right, panel_bottom),
-        accent=CYAN, alpha=0.9,
-    )
-    center_x = width // 2
-    available = max(25, panel_right - panel_left - max(20, int(48 * scale)))
-    title_y = panel_top + max(21, int(38 * scale))
-    draw_text(
-        frame, "PERFORMANCE COMPLETE", (center_x, title_y),
-        max(0.39, 0.72 * scale), CYAN, max(1, int(2 * scale)),
-        align="center", max_width=available, min_scale=0.23,
-    )
-    song_y = title_y + max(18, int(30 * scale))
-    draw_text(
-        frame, song_label, (center_x, song_y), max(0.29, 0.46 * scale),
-        MUTED, 1, align="center", max_width=available, min_scale=0.18,
+        frame,
+        (panel_left, panel_top),
+        (panel_right, panel_bottom),
+        accent=GREEN,
+        alpha=0.63,
+        radius=max(12, int(26 * scale)),
     )
 
-    rank_text = str(rank).upper()[:3] or "-"
-    rank_y = song_y + max(35, int(86 * scale))
-    rank_scale = fit_text_scale(
-        rank_text, max(30, int(available * 0.30)), max(1.25, 2.8 * scale),
-        0.7, max(3, int(6 * scale)),
-    )
+    center_x = (panel_left + panel_right) // 2
+    available = max(40, panel_right - panel_left - max(22, int(48 * scale)))
+    title_y = panel_top + max(21, int(39 * scale))
     draw_text(
-        frame, rank_text, (center_x, rank_y), rank_scale, GREEN,
-        max(3, int(5 * scale)), align="center", max_width=available,
+        frame,
+        "PERFORMANCE COMPLETE",
+        (center_x, title_y),
+        max(0.31, 0.58 * scale),
+        CYAN,
+        max(1, int(2 * scale)),
+        align="center",
+        max_width=available,
+        min_scale=0.19,
     )
-    rank_label_y = rank_y + max(15, int(25 * scale))
+    song_y = title_y + max(18, int(31 * scale))
     draw_text(
-        frame, "RANK", (center_x, rank_label_y), max(0.28, 0.42 * scale),
-        MUTED, 1, align="center",
+        frame,
+        song_label,
+        (center_x, song_y),
+        max(0.23, 0.38 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=available,
+        min_scale=0.15,
     )
 
-    summary_y = rank_label_y + max(24, int(52 * scale))
     accuracy_value = 0.0
     try:
         accuracy_value = float(accuracy)
-        if not math.isfinite(accuracy_value):
-            accuracy_value = 0.0
     except (TypeError, ValueError):
         pass
+    if not math.isfinite(accuracy_value):
+        accuracy_value = 0.0
     accuracy_value = max(0.0, min(100.0, accuracy_value))
-    summary = f"SCORE {max(0, _safe_int(score)):,}     ACCURACY {accuracy_value:.1f}%"
+    rank_text = str(rank).upper()[:3] or "-"
+    rank_y = song_y + max(39, int(84 * scale))
     draw_text(
-        frame, summary, (center_x, summary_y), max(0.34, 0.60 * scale),
-        WHITE, max(1, int(2 * scale)), align="center", max_width=available,
-        min_scale=0.21,
+        frame,
+        rank_text,
+        (center_x, rank_y),
+        fit_text_scale(rank_text, max(35, int(available * 0.30)), max(1.2, 2.55 * scale), 0.7, max(3, int(5 * scale))),
+        GREEN,
+        max(3, int(5 * scale)),
+        align="center",
+        max_width=available,
+    )
+    draw_text(
+        frame,
+        "FINAL RANK",
+        (center_x, rank_y + max(17, int(28 * scale))),
+        max(0.21, 0.32 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=available,
+        min_scale=0.14,
     )
 
-    stats_bottom = summary_y
-    if panel_right - panel_left >= 600 and panel_bottom - panel_top >= 400:
-        stat_items = (
-            ("PERFECT", max(0, _safe_int(perfect)), GREEN),
-            ("GREAT", max(0, _safe_int(great)), CYAN),
-            ("GOOD", max(0, _safe_int(good)), GOLD),
-            ("MISS", max(0, _safe_int(misses)), RED),
-        )
-        cards_top = summary_y + max(15, int(30 * scale))
-        stats_bottom = cards_top + max(50, int(82 * scale))
-        cards_left = panel_left + max(14, int(40 * scale))
-        cards_right = panel_right - max(14, int(40 * scale))
-        card_gap = max(5, int(12 * scale))
-        card_width = max(
-            1,
-            (cards_right - cards_left - card_gap * (len(stat_items) - 1))
-            // len(stat_items),
-        )
-        for index, (label, value, accent) in enumerate(stat_items):
-            left = cards_left + index * (card_width + card_gap)
-            right = min(cards_right, left + card_width)
-            draw_glass_panel(
-                frame, (left, cards_top), (right, stats_bottom),
-                accent=accent, alpha=0.62,
-            )
-            stat_center = (left + right) // 2
-            draw_text(
-                frame, label,
-                (stat_center, cards_top + max(13, int(24 * scale))),
-                max(0.22, 0.35 * scale), MUTED, 1, align="center",
-                max_width=max(15, right - left - 12), min_scale=0.15,
-            )
-            draw_text(
-                frame, str(value),
-                (stat_center, stats_bottom - max(9, int(16 * scale))),
-                max(0.38, 0.68 * scale), accent, max(1, int(2 * scale)),
-                align="center", max_width=max(15, right - left - 12),
-                min_scale=0.24,
-            )
-    else:
-        stats_bottom = summary_y + max(20, int(43 * scale))
-        stats = (
-            f"PERFECT {max(0, _safe_int(perfect))}   "
-            f"GREAT {max(0, _safe_int(great))}   "
-            f"GOOD {max(0, _safe_int(good))}   "
-            f"MISS {max(0, _safe_int(misses))}"
-        )
-        draw_text(
-            frame, stats, (center_x, stats_bottom), max(0.27, 0.46 * scale),
-            GOLD, 1, align="center", max_width=available, min_scale=0.17,
-        )
-
-    combo_y = stats_bottom + max(19, int(39 * scale))
+    summary_y = rank_y + max(47, int(83 * scale))
     draw_text(
-        frame, f"BEST COMBO  x{max(0, _safe_int(max_combo))}",
-        (center_x, combo_y), max(0.29, 0.48 * scale), WHITE, 1,
-        align="center", max_width=available, min_scale=0.18,
+        frame,
+        f"{max(0, _safe_int(score)):,}",
+        (center_x, summary_y),
+        max(0.46, 0.82 * scale),
+        WHITE,
+        max(1, int(2 * scale)),
+        align="center",
+        max_width=available,
+        min_scale=0.24,
     )
-    if width >= 600 and height >= 400:
-        meter_label_y = combo_y + max(17, int(31 * scale))
-        draw_text(
-            frame, "TIMING ACCURACY", (center_x, meter_label_y),
-            max(0.22, 0.34 * scale), MUTED, 1, align="center",
-            max_width=available, min_scale=0.15,
-        )
-        meter_left = center_x - min(int(available * 0.31), int(250 * scale))
-        meter_right = center_x + min(int(available * 0.31), int(250 * scale))
-        meter_top = meter_label_y + max(6, int(10 * scale))
-        _draw_progress_bar(
-            frame, meter_left, meter_top, meter_right,
-            meter_top + max(3, int(5 * scale)), accuracy_value / 100.0,
-        )
-    hint_y = panel_bottom - max(8, int(18 * scale))
     draw_text(
-        frame, replay_hint, (center_x, hint_y), max(0.28, 0.48 * scale),
-        GREEN, 1, align="center", max_width=available, min_scale=0.18,
+        frame,
+        f"SCORE  |  ACCURACY {accuracy_value:.1f}%  |  BEST COMBO x{max(0, _safe_int(max_combo))}",
+        (center_x, summary_y + max(18, int(32 * scale))),
+        max(0.20, 0.33 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=available,
+        min_scale=0.14,
+    )
+
+    stats_y = summary_y + max(43, int(74 * scale))
+    stats = (
+        f"PERFECT {max(0, _safe_int(perfect))}   |   "
+        f"GREAT {max(0, _safe_int(great))}   |   "
+        f"GOOD {max(0, _safe_int(good))}   |   "
+        f"MISS {max(0, _safe_int(misses))}"
+    )
+    draw_text(
+        frame,
+        stats,
+        (center_x, stats_y),
+        max(0.20, 0.34 * scale),
+        GOLD,
+        1,
+        align="center",
+        max_width=available,
+        min_scale=0.14,
+    )
+    meter_left = panel_left + max(18, int(42 * scale))
+    meter_right = panel_right - max(18, int(42 * scale))
+    meter_top = min(panel_bottom - max(27, int(52 * scale)), stats_y + max(9, int(17 * scale)))
+    _draw_progress_bar(
+        frame,
+        meter_left,
+        meter_top,
+        meter_right,
+        meter_top + max(3, int(5 * scale)),
+        accuracy_value / 100.0,
+    )
+    draw_text(
+        frame,
+        replay_hint,
+        (center_x, panel_bottom - max(9, int(18 * scale))),
+        max(0.21, 0.36 * scale),
+        GREEN,
+        1,
+        align="center",
+        max_width=available,
+        min_scale=0.15,
     )
     return frame
 
@@ -792,26 +868,32 @@ def draw_help_overlay(
     frame,
     controls: Sequence[tuple[str, str]] = DEFAULT_CONTROLS,
 ) -> Any:
-    """Draw a short control guide that can be toggled with the H key."""
+    """Draw a compact control guide that pauses the active round safely."""
     width, height = _frame_size(frame)
     scale = _ui_scale(frame)
-    _draw_background_tint(frame, 0.42)
-    left = max(5, int(width * 0.18))
-    right = min(width - 6, int(width * 0.82))
-    top = max(5, int(height * 0.13))
-    bottom = min(height - 6, int(height * 0.87))
-    draw_glass_panel(frame, (left, top), (right, bottom), accent=MAGENTA, alpha=0.9)
+    _draw_background_tint(frame, 0.57)
+    left = max(5, int(width * 0.19))
+    right = min(width - 6, int(width * 0.81))
+    top = max(5, int(height * 0.15))
+    bottom = min(height - 6, int(height * 0.85))
+    draw_glass_panel(
+        frame,
+        (left, top),
+        (right, bottom),
+        accent=CYAN,
+        alpha=0.78,
+        radius=max(12, int(26 * scale)),
+    )
     center_x = width // 2
     available = max(25, right - left - max(20, int(50 * scale)))
     heading_y = top + max(20, int(40 * scale))
     draw_text(
-        frame, "HOW TO PLAY", (center_x, heading_y), max(0.41, 0.78 * scale),
-        CYAN, max(1, int(2 * scale)), align="center", max_width=available,
-        min_scale=0.24,
+        frame, "QUICK GUIDE", (center_x, heading_y), max(0.37, 0.66 * scale),
+        CYAN, max(1, int(2 * scale)), align="center", max_width=available, min_scale=0.22,
     )
     guide_y = heading_y + max(18, int(32 * scale))
     draw_text(
-        frame, "Move a fingertip through a circle when its halo closes.",
+        frame, "Move a fingertip through a falling circle to play its note.",
         (center_x, guide_y), max(0.29, 0.48 * scale), WHITE, 1,
         align="center", max_width=available, min_scale=0.18,
     )
@@ -831,14 +913,8 @@ def draw_help_overlay(
             (inner_right - inner_left - column_gap * (column_count - 1))
             // column_count,
         )
-        row_gap = max(
-            18,
-            min(
-                max(24, int(76 * scale)),
-                max(18, (content_bottom - content_top) // rows_per_column),
-            ),
-        )
-        row_scale = max(0.25, 0.44 * scale)
+        row_gap = max(18, min(max(23, int(58 * scale)), max(18, (content_bottom - content_top) // rows_per_column)))
+        row_scale = max(0.24, 0.40 * scale)
         for index, item in enumerate(rows):
             try:
                 key, action = item
@@ -849,14 +925,8 @@ def draw_help_overlay(
             column_left = inner_left + column * (column_width + column_gap)
             column_right = min(inner_right, column_left + column_width)
             y = min(content_bottom, content_top + row * row_gap)
-            card_top = max(top + 2, y - max(14, int(23 * scale)))
-            card_bottom = min(bottom - 2, y + max(6, int(13 * scale)))
-            draw_glass_panel(
-                frame, (column_left, card_top), (column_right, card_bottom),
-                accent=None, alpha=0.46,
-            )
             key_x = column_left + max(7, int(13 * scale))
-            action_x = column_left + max(57, int(104 * scale))
+            action_x = column_left + max(58, int(100 * scale))
             draw_text(
                 frame, str(key), (key_x, y), row_scale, GOLD, 1,
                 max_width=max(25, action_x - key_x - 8), min_scale=0.14,
@@ -865,8 +935,17 @@ def draw_help_overlay(
                 frame, str(action), (action_x, y), row_scale, WHITE, 1,
                 max_width=max(30, column_right - action_x - 10), min_scale=0.16,
             )
+            if row < rows_per_column - 1:
+                cv2.line(
+                    frame,
+                    (column_left, min(content_bottom, y + max(7, int(13 * scale)))),
+                    (column_right, min(content_bottom, y + max(7, int(13 * scale)))),
+                    PANEL_LIGHT,
+                    1,
+                    cv2.LINE_AA,
+                )
     draw_text(
-        frame, "Press H to return", (center_x, bottom - max(7, int(18 * scale))),
+        frame, "H  RESUME PERFORMANCE", (center_x, bottom - max(7, int(18 * scale))),
         max(0.27, 0.44 * scale), GREEN, 1, align="center",
         max_width=available, min_scale=0.17,
     )

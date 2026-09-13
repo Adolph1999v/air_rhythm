@@ -1,0 +1,413 @@
+"""Person-free performance-stage rendering for Air Rhythm.
+
+The main game view is generated from scratch; it never copies webcam pixels.
+MediaPipe landmarks are used only as coordinates for virtual drumsticks.  The
+real camera feed is deliberately contained in a separate live-input inset so a
+viewer can still see the hand-tracking evidence without putting the player on
+the main stage.
+"""
+
+from collections import OrderedDict
+import math
+
+import cv2
+import numpy as np
+
+
+HAND_LANDMARK_COUNT = 21
+MAX_CACHED_BACKGROUNDS = 3
+
+# OpenCV uses BGR.  The materials are deliberately quieter than the playable
+# circles, so a target remains the most obvious object to reach for.
+STAGE_INK = (14, 13, 25)
+STAGE_PANEL = (25, 25, 42)
+STAGE_BORDER = (98, 105, 137)
+STICK_WOOD = (88, 154, 224)
+STICK_HIGHLIGHT = (194, 226, 249)
+STICK_SHADOW = (10, 13, 20)
+STICK_ACCENTS = ((255, 221, 71), (224, 94, 255))
+
+_background_cache: OrderedDict[tuple[int, int], np.ndarray] = OrderedDict()
+
+
+def _frame_size(frame: np.ndarray) -> tuple[int, int]:
+    """Return an image's width and height with clear stage-rendering errors."""
+    if not isinstance(frame, np.ndarray):
+        raise TypeError("frame must be a NumPy image")
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError("frame must be a three-channel BGR image")
+    height, width = frame.shape[:2]
+    if height < 1 or width < 1:
+        raise ValueError("frame must contain at least one pixel")
+    return width, height
+
+
+def _filled_round_rect(
+    image: np.ndarray,
+    rect: tuple[int, int, int, int],
+    color: tuple[int, int, int],
+    radius: int,
+) -> None:
+    """Draw a filled rounded rectangle using only OpenCV primitives."""
+    left, top, right, bottom = rect
+    radius = max(0, min(radius, (right - left) // 2, (bottom - top) // 2))
+    if radius <= 1:
+        cv2.rectangle(image, (left, top), (right, bottom), color, -1)
+        return
+    cv2.rectangle(image, (left + radius, top), (right - radius, bottom), color, -1)
+    cv2.rectangle(image, (left, top + radius), (right, bottom - radius), color, -1)
+    for center in (
+        (left + radius, top + radius),
+        (right - radius, top + radius),
+        (left + radius, bottom - radius),
+        (right - radius, bottom - radius),
+    ):
+        cv2.circle(image, center, radius, color, -1, cv2.LINE_AA)
+
+
+def _create_background(height: int, width: int) -> np.ndarray:
+    """Build one restrained, non-camera backdrop for a stage resolution."""
+    vertical = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+    horizontal = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
+    background = np.empty((height, width, 3), dtype=np.uint8)
+    background[:, :, 0] = np.clip(
+        22 + vertical * 19 + (1.0 - horizontal) * 9,
+        0,
+        255,
+    ).astype(np.uint8)
+    background[:, :, 1] = np.clip(15 + vertical * 11, 0, 255).astype(np.uint8)
+    background[:, :, 2] = np.clip(
+        25 + vertical * 13 + horizontal * 5,
+        0,
+        255,
+    ).astype(np.uint8)
+
+    glow = np.zeros_like(background)
+    cv2.circle(
+        glow,
+        (round(width * 0.16), round(height * 0.22)),
+        max(35, round(min(width, height) * 0.28)),
+        (88, 50, 16),
+        -1,
+        cv2.LINE_AA,
+    )
+    cv2.circle(
+        glow,
+        (round(width * 0.82), round(height * 0.72)),
+        max(35, round(min(width, height) * 0.35)),
+        (53, 20, 77),
+        -1,
+        cv2.LINE_AA,
+    )
+    blur_size = max(31, (min(width, height) // 7) | 1)
+    glow = cv2.GaussianBlur(glow, (blur_size, blur_size), 0)
+    cv2.addWeighted(background, 1.0, glow, 0.27, 0, background)
+
+    # Small fixed specks give the generated scene some depth.  They are not
+    # arranged in columns, so they cannot be mistaken for the old game lanes.
+    random = np.random.default_rng(width * 100_003 + height)
+    count = max(20, min(90, width * height // 36_000))
+    for x, y, brightness in zip(
+        random.integers(0, width, count),
+        random.integers(0, height, count),
+        random.integers(28, 67, count),
+    ):
+        cv2.circle(
+            background,
+            (int(x), int(y)),
+            1,
+            (int(brightness), int(brightness), int(brightness + 9)),
+            -1,
+            cv2.LINE_AA,
+        )
+    return background
+
+
+def _background_for(height: int, width: int) -> np.ndarray:
+    """Get a cached immutable base stage for the requested resolution."""
+    key = (height, width)
+    cached = _background_cache.get(key)
+    if cached is not None:
+        _background_cache.move_to_end(key)
+        return cached
+    background = _create_background(height, width)
+    background.setflags(write=False)
+    _background_cache[key] = background
+    if len(_background_cache) > MAX_CACHED_BACKGROUNDS:
+        _background_cache.popitem(last=False)
+    return background
+
+
+def create_performance_stage(frame: np.ndarray, current_time: float = 0.0) -> np.ndarray:
+    """Return a generated performance scene matching ``frame``'s dimensions.
+
+    The input frame supplies only shape information.  No pixel from it is
+    copied into the returned scene, which keeps the main presentation private.
+    """
+    width, height = _frame_size(frame)
+    stage = _background_for(height, width).copy()
+    time_value = float(current_time) if isinstance(current_time, (int, float)) else 0.0
+    if not math.isfinite(time_value):
+        time_value = 0.0
+
+    # Very faint non-lane motion makes the stage feel alive without competing
+    # with the falling notes or virtual drumsticks.
+    phase = time_value * 0.55
+    center = (
+        round(width * (0.50 + 0.10 * math.sin(phase))),
+        round(height * (0.48 + 0.05 * math.cos(phase * 0.83))),
+    )
+    for multiplier, color in ((0.18, (47, 50, 78)), (0.30, (43, 33, 67))):
+        radius = max(25, round(min(width, height) * multiplier))
+        cv2.circle(stage, center, radius, color, 1, cv2.LINE_AA)
+    return stage
+
+
+def _hand_points(hand, width: int, height: int) -> np.ndarray | None:
+    """Convert one MediaPipe-like hand into safe integer display points."""
+    try:
+        landmarks = list(hand)
+    except TypeError:
+        return None
+    if len(landmarks) < HAND_LANDMARK_COUNT:
+        return None
+
+    points = []
+    for landmark in landmarks[:HAND_LANDMARK_COUNT]:
+        try:
+            x = float(landmark.x)
+            y = float(landmark.y)
+        except (AttributeError, TypeError, ValueError):
+            return None
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return None
+        points.append(
+            (
+                int(round(np.clip(x, 0.0, 1.0) * (width - 1))),
+                int(round(np.clip(y, 0.0, 1.0) * (height - 1))),
+            )
+        )
+    return np.asarray(points, dtype=np.float32)
+
+
+def _draw_stick(
+    frame: np.ndarray,
+    handle: tuple[int, int],
+    tip: tuple[int, int],
+    body_radius: int,
+    accent: tuple[int, int, int],
+) -> None:
+    """Draw one softly glowing digital drumstick inside a compact local area."""
+    width, height = _frame_size(frame)
+    glow_padding = body_radius * 5 + 8
+    left = max(0, min(handle[0], tip[0]) - glow_padding)
+    right = min(width, max(handle[0], tip[0]) + glow_padding + 1)
+    top = max(0, min(handle[1], tip[1]) - glow_padding)
+    bottom = min(height, max(handle[1], tip[1]) + glow_padding + 1)
+    if left >= right or top >= bottom:
+        return
+
+    roi = frame[top:bottom, left:right]
+    local_handle = (handle[0] - left, handle[1] - top)
+    local_tip = (tip[0] - left, tip[1] - top)
+    glow = roi.copy()
+    cv2.line(
+        glow,
+        local_handle,
+        local_tip,
+        accent,
+        body_radius * 5,
+        cv2.LINE_AA,
+    )
+    cv2.circle(glow, local_tip, body_radius * 3, accent, -1, cv2.LINE_AA)
+    cv2.addWeighted(glow, 0.16, roi, 0.84, 0, roi)
+
+    cv2.line(
+        frame,
+        handle,
+        tip,
+        STICK_SHADOW,
+        body_radius * 2 + 5,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        frame,
+        handle,
+        tip,
+        STICK_WOOD,
+        body_radius * 2,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        frame,
+        handle,
+        tip,
+        STICK_HIGHLIGHT,
+        max(2, body_radius // 2),
+        cv2.LINE_AA,
+    )
+    cv2.circle(frame, handle, body_radius, STICK_WOOD, -1, cv2.LINE_AA)
+    cv2.circle(frame, tip, body_radius + 3, STICK_SHADOW, -1, cv2.LINE_AA)
+    cv2.circle(frame, tip, body_radius + 1, accent, -1, cv2.LINE_AA)
+    cv2.circle(frame, tip, max(2, body_radius // 2), STICK_HIGHLIGHT, -1, cv2.LINE_AA)
+
+
+def draw_virtual_drumsticks(frame: np.ndarray, hand_landmarks) -> np.ndarray:
+    """Replace each detected hand with a screen-aligned virtual drumstick.
+
+    A stick's tip is pinned to landmark 8 (the index fingertip), exactly where
+    the rhythm collision system already measures contact.  Its body points
+    back through the index finger toward landmark 5, so it rotates naturally
+    as the player turns their hand.  This is a 2D visual proxy, not a claim to
+    reconstruct a physical drumstick in three dimensions.
+    """
+    width, height = _frame_size(frame)
+    min_dimension = min(width, height)
+    if hand_landmarks is None:
+        return frame
+
+    for hand_index, hand in enumerate(hand_landmarks):
+        points = _hand_points(hand, width, height)
+        if points is None:
+            continue
+        index_base = points[5]
+        index_tip = points[8]
+        direction = index_tip - index_base
+        direction_length = float(np.linalg.norm(direction))
+        if direction_length < 4.0:
+            direction = points[12] - points[9]
+            direction_length = float(np.linalg.norm(direction))
+        if direction_length < 1.0:
+            continue
+
+        unit = direction / direction_length
+        stick_length = float(
+            np.clip(direction_length * 1.85, min_dimension * 0.16, min_dimension * 0.38)
+        )
+        tip = tuple(np.rint(index_tip).astype(int))
+        handle = tuple(np.rint(index_tip - unit * stick_length).astype(int))
+        body_radius = max(4, round(min_dimension * 0.0105))
+        accent = STICK_ACCENTS[hand_index % len(STICK_ACCENTS)]
+        _draw_stick(frame, handle, tip, body_radius, accent)
+    return frame
+
+
+def _fit_camera_inset(
+    frame_width: int,
+    frame_height: int,
+    source_width: int,
+    source_height: int,
+) -> tuple[int, int, int, int, int, int]:
+    """Return outer and inner bounds for a bottom-right camera inset."""
+    minimum = min(frame_width, frame_height)
+    margin = max(8, round(minimum * 0.022))
+    padding = max(3, round(minimum * 0.010))
+    header_height = max(14, round(minimum * 0.032))
+    available_width = max(1, frame_width - margin * 2)
+    available_height = max(1, frame_height - margin * 2 - header_height - padding * 2)
+    inner_width = min(max(72, round(frame_width * 0.29)), available_width - padding * 2)
+    aspect_ratio = source_width / max(1, source_height)
+    inner_height = max(1, round(inner_width / max(0.1, aspect_ratio)))
+    max_inner_height = max(1, min(round(frame_height * 0.31), available_height))
+    if inner_height > max_inner_height:
+        inner_height = max_inner_height
+        inner_width = max(1, round(inner_height * aspect_ratio))
+
+    outer_width = inner_width + padding * 2
+    outer_height = inner_height + header_height + padding * 2
+    right = frame_width - margin
+    bottom = frame_height - margin
+    left = max(0, right - outer_width)
+    top = max(0, bottom - outer_height)
+    return left, top, right, bottom, padding, header_height
+
+
+def draw_camera_inset(
+    frame: np.ndarray,
+    camera_frame: np.ndarray,
+    *,
+    mode_label: str,
+    hand_count: int,
+) -> tuple[int, int, int, int]:
+    """Draw the real camera plus skeleton evidence in a compact inset.
+
+    ``camera_frame`` is expected to have already received the selected privacy
+    treatment and landmark skeleton.  The returned bounds make the placement
+    easy to inspect in camera-free tests.
+    """
+    frame_width, frame_height = _frame_size(frame)
+    source_width, source_height = _frame_size(camera_frame)
+    left, top, right, bottom, padding, header_height = _fit_camera_inset(
+        frame_width,
+        frame_height,
+        source_width,
+        source_height,
+    )
+    corner_radius = max(5, round(min(frame_width, frame_height) * 0.018))
+
+    # Soft shadow first, then a calm glass-like outer shell.  This keeps the
+    # live evidence visually separate without looking like a heavy old panel.
+    shadow_left = min(frame_width - 1, left + 3)
+    shadow_top = min(frame_height - 1, top + 4)
+    shadow_right = min(frame_width - 1, right + 3)
+    shadow_bottom = min(frame_height - 1, bottom + 4)
+    _filled_round_rect(
+        frame,
+        (shadow_left, shadow_top, shadow_right, shadow_bottom),
+        (5, 7, 12),
+        corner_radius,
+    )
+    _filled_round_rect(frame, (left, top, right, bottom), STAGE_PANEL, corner_radius)
+    cv2.rectangle(frame, (left, top), (right, bottom), STAGE_BORDER, 1, cv2.LINE_AA)
+
+    image_left = left + padding
+    image_top = top + header_height + padding
+    image_right = max(image_left + 1, right - padding)
+    image_bottom = max(image_top + 1, bottom - padding)
+    image_width = image_right - image_left
+    image_height = image_bottom - image_top
+    interpolation = cv2.INTER_AREA if camera_frame.shape[0] >= image_height else cv2.INTER_LINEAR
+    preview = cv2.resize(camera_frame, (image_width, image_height), interpolation=interpolation)
+    frame[image_top:image_bottom, image_left:image_right] = preview
+    cv2.rectangle(
+        frame,
+        (image_left, image_top),
+        (image_right - 1, image_bottom - 1),
+        (158, 166, 197),
+        1,
+        cv2.LINE_AA,
+    )
+
+    scale = max(0.28, min(0.52, min(frame_width / 1280.0, frame_height / 720.0) * 0.48))
+    text_y = top + max(11, header_height - 4)
+    cv2.circle(frame, (left + padding + 3, text_y - 4), 3, (103, 239, 112), -1, cv2.LINE_AA)
+    cv2.putText(
+        frame,
+        "LIVE INPUT",
+        (left + padding + 10, text_y),
+        cv2.FONT_HERSHEY_DUPLEX,
+        scale,
+        (238, 244, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    status = f"{str(mode_label).upper()} | {max(0, int(hand_count))}/2"
+    status_size = cv2.getTextSize(status, cv2.FONT_HERSHEY_SIMPLEX, scale * 0.78, 1)[0]
+    cv2.putText(
+        frame,
+        status,
+        (max(left + padding + 10, right - padding - status_size[0]), text_y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        scale * 0.78,
+        (182, 193, 215),
+        1,
+        cv2.LINE_AA,
+    )
+    return left, top, right, bottom
+
+
+__all__ = [
+    "create_performance_stage",
+    "draw_camera_inset",
+    "draw_virtual_drumsticks",
+]

@@ -43,6 +43,8 @@ class AppSmokeTests(unittest.TestCase):
             patch("app.cv2.VideoCapture", return_value=camera),
             patch("app.AudioEngine", return_value=audio),
             patch("app.create_hand_landmarker", return_value=FakeLandmarker()),
+            patch("app.cv2.namedWindow"),
+            patch("app.cv2.setWindowProperty"),
             patch("app.cv2.imshow", side_effect=lambda _title, frame: shown_frames.append(frame.copy())),
             patch("app.cv2.waitKey", wait_key),
             patch("app.cv2.destroyAllWindows"),
@@ -63,8 +65,49 @@ class AppSmokeTests(unittest.TestCase):
         self.assertTrue(camera.released)
         audio.close.assert_called_once()
         self.assertEqual(len(shown_frames), 1)
-        self.assertEqual(shown_frames[0].shape, (480, 640, 3))
+        self.assertEqual(shown_frames[0].shape, (480, 768, 3))
         self.assertFalse(np.all(shown_frames[0] == 220))
+
+    def test_main_composes_a_generated_stage_with_a_live_input_inset(self):
+        camera = FakeCamera()
+        audio = Mock(enabled=True, muted=False, error_message=None)
+        audio.start.return_value = True
+
+        with (
+            patch(
+                "app.create_performance_stage",
+                wraps=app.create_performance_stage,
+            ) as create_stage,
+            patch(
+                "app.draw_camera_inset",
+                wraps=app.draw_camera_inset,
+            ) as draw_inset,
+        ):
+            self.run_app(camera, audio, [ord("q")])
+
+        create_stage.assert_called_once()
+        draw_inset.assert_called_once()
+
+    def test_display_window_preserves_the_stage_aspect_ratio(self):
+        with (
+            patch("app.cv2.namedWindow") as named_window,
+            patch("app.cv2.setWindowProperty") as set_window_property,
+        ):
+            app.configure_display_window()
+
+        named_window.assert_called_once_with(
+            app.WINDOW_TITLE,
+            app.cv2.WINDOW_NORMAL | app.cv2.WINDOW_KEEPRATIO,
+        )
+        set_window_property.assert_called_once_with(
+            app.WINDOW_TITLE,
+            app.cv2.WND_PROP_ASPECT_RATIO,
+            app.cv2.WINDOW_KEEPRATIO,
+        )
+
+    def test_stage_dimensions_match_a_maximized_sixteen_by_ten_display(self):
+        self.assertEqual(app.stage_dimensions_for_camera(1280, 720), (1280, 800))
+        self.assertEqual(app.stage_dimensions_for_camera(640, 480), (768, 480))
 
     def test_space_moves_from_title_to_gameplay_on_the_next_frame(self):
         camera = FakeCamera()

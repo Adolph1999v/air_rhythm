@@ -8,17 +8,19 @@ MediaPipe supplies the **pretrained** Hand Landmarker used to find hands and the
 
 ## Project status
 
-Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now has a portfolio-ready title screen, timed song challenge, free play, scoring, privacy views, and an optional technical overlay. Coloured circles fall from the top of the full camera frame at varied horizontal positions. Fingertip contact drives the music, while a shrinking halo teaches the player when to hit.
+Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now presents the game on a generated, person-free performance stage: coloured circles fall across the full stage, virtual drumsticks mirror the tracked hands, and a compact lower-right live-input inset shows the real camera plus its landmark skeleton. Fingertip contact drives the music and timing grades appear after a hit.
 
 ### Current capabilities
 
 - Safe webcam startup and shutdown
-- Mirrored camera preview for natural hand movement
+- Mirrored live-input preview for natural hand movement
 - MediaPipe hand tracking in video mode
-- Two-hand landmark skeletons and fingertip highlights
+- Two-hand landmark skeletons and fingertip highlights in the live-input inset
 - Live detected-hand counter
 - Invisible full-frame play area with no fixed lanes
-- Time-based falling-node movement that stays consistent across frame rates
+- Generated main performance stage with no copied webcam pixels
+- Virtual drumsticks that use the index-finger landmark as each stick tip
+- Time-based, constant-speed falling-node movement that stays consistent across frame rates
 - Contact detection using all fingertips on both hands
 - Path-based collision that catches fast movements between camera frames
 - Separate musical-timing grades and movement-strength bonuses
@@ -27,15 +29,16 @@ Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented an
 - Immediate, overlapping synthesised sounds through a persistent audio output stream
 - A simplified 35-note opening melody from Beethoven's *Für Elise*
 - An absolute beat clock that stays aligned after a slow camera frame
-- Shrinking timing halos with `PERFECT`, `GREAT`, and `GOOD` accuracy grades
+- First challenge circle enters from the top exactly when the countdown reaches `GO`
+- `PERFECT`, `GREAT`, and `GOOD` accuracy grades after timed hits
 - Score, combo, accuracy, final rank, countdown, and results screen
 - A polished title screen and recording-friendly visual style
 - A compact gameplay HUD with score, combo, hit/miss totals, and song progress
 - Toggleable help and technical overlays
 - Live FPS, MediaPipe inference time, detected-hand count, landmark count, and mean handedness-classification confidence in the technical view
-- A visible OpenCV + MediaPipe project badge
+- An optional OpenCV + MediaPipe technical overlay
 - Four colour-coded instruments and a free-play mode
-- Hands-only privacy, skeleton-only privacy, and normal-camera views
+- Hands-only privacy, skeleton-only privacy, and normal-camera modes for the live-input inset
 - Mute, restart, and a camera-free sound check
 
 ### Next milestone
@@ -52,7 +55,7 @@ The complete career-focused roadmap, measurable completion checks, and deferred 
 
 ## Play music with your hands
 
-The game starts in **Challenge** mode. After a three-second countdown, each circle carries one scheduled note from the opening of *Für Elise*. The circle's white halo becomes smaller as its beat approaches. The ideal moment is when the halo meets the circle and turns green. A late halo turns warm orange.
+The game starts in **Challenge** mode. The first circle enters from the top at the exact moment the three-second countdown reaches `GO`, then takes two seconds to reach its first beat in the upper third of the screen. Each later circle carries one scheduled note from the opening of *Für Elise*. A clean falling circle is the only target marker; after a touch, the score system reports how close it was to the musical beat. If it is not hit in time, it keeps the same speed, continues down, and exits naturally at the bottom rather than vanishing at the beat point.
 
 The timing window is intentionally forgiving for camera play:
 
@@ -86,7 +89,7 @@ Select the camera window before pressing a key.
 | `Space` | Start from the title screen or replay after Results |
 | `1` | Restart the timed *Für Elise* challenge |
 | `2` | Free play: invent your own tune |
-| `P` | Cycle hands only → skeleton only → normal camera |
+| `P` | Cycle the live-input inset: hands only → skeleton only → normal camera |
 | `M` | Mute/unmute audio |
 | `R` | Restart the current mode, melody, and counters |
 | `H` | Show or hide Help; an active round pauses safely |
@@ -98,13 +101,15 @@ Changing mode starts a fresh round. Muting clears ringing notes, but the game an
 
 ## Privacy views
 
-Air Rhythm starts with the **normal camera** view. The hand skeleton remains visible over the full mirrored image.
+The large performance stage is always person-free: it is drawn from scratch and does not copy camera pixels. It uses the tracked landmarks only to place and rotate the virtual drumsticks.
 
-Press `P` once for **Hands only**. The app replaces the face, body, room, and other camera pixels with an opaque dark stage, while revealing small hand shapes estimated from MediaPipe's 21 landmarks. Press `P` again for **Skeleton only**, which reveals no original camera pixels. Press it once more to return to the normal camera.
+The lower-right **LIVE INPUT** inset starts in **normal camera** mode. It shows the mirrored camera plus the coloured hand skeleton, making the live OpenCV and MediaPipe pipeline visible in a demo without placing the player on the main stage.
 
-MediaPipe still receives the normal mirrored camera frame in every view. Privacy is applied only to the image shown in the game, so hiding the camera does not weaken hand detection.
+Press `P` once for **Hands only** in that inset. The app replaces the face, body, room, and other camera pixels with an opaque stage, while revealing small hand shapes estimated from MediaPipe's 21 landmarks. Press `P` again for **Skeleton only**, which reveals no original camera pixels. Press it once more to return the inset to the normal camera.
 
-The hands-only mask is estimated from landmarks rather than pixel-perfect hand segmentation. If a hand passes directly across a face, a few pixels behind the hand can fall inside its cut-out. Use skeleton-only mode when complete visual privacy is required. This privacy feature changes the live game display; it does not control separate screen-recording or camera software.
+MediaPipe still receives the normal mirrored camera frame in every input mode. Privacy is applied only to the displayed inset, so hiding camera pixels does not weaken hand detection.
+
+The hands-only mask is estimated from landmarks rather than pixel-perfect hand segmentation. If a hand passes directly across a face, a few pixels behind the hand can fall inside its cut-out. Use skeleton-only mode when complete visual privacy is required. This feature changes the app display; it does not control separate screen-recording or camera software.
 
 ## How the current foundation works
 
@@ -114,14 +119,15 @@ Webcam frame
     -> the frame is converted from BGR to RGB
     -> MediaPipe detects hand landmarks
     -> normalized landmarks are converted to pixels
-    -> the selected privacy view replaces hidden camera pixels
+    -> the index-fingertip landmarks place virtual drumstick tips on a generated stage
+    -> the selected privacy view prepares only the lower-right live-input inset
     -> fingertip paths are checked against falling circles
     -> the beat clock compares contact time with each node's target time
     -> successful hits trigger prepared sounds in the background
-    -> OpenCV draws the game, interface, and hand-tracking skeleton
+    -> OpenCV draws the performance stage, interface, drumsticks, and input skeleton
 ```
 
-MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The application converts the model's normalized output into pixel positions, keeps short movement histories, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the motion, interaction, timing, and presentation systems are original application engineering.
+MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The application converts the model's normalized output into pixel positions, keeps short movement histories, maps each index fingertip to a 2D virtual drumstick, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the motion, interaction, timing, and presentation systems are original application engineering.
 
 Press `D` during the demonstration to reveal the technical overlay. It makes the active pipeline visible through live FPS, MediaPipe inference time, hand count, processed landmark count, and the mean Left/Right handedness-classification confidence when available. That value is not presented as overall tracking accuracy. Press `D` again for the cleaner recording view.
 
@@ -166,6 +172,7 @@ audio_engine.py              Prepared tones and background audio mixing
 music.py                     Instruments, melody notes, and note progression
 privacy.py                   Hands-only and skeleton-only display rendering
 rhythm_game.py               Song clock, timing grades, score, and round state
+performance_stage.py         Person-free stage, virtual drumsticks, and input inset
 ui.py                        Reusable title, HUD, help, debug, and results drawing
 models/hand_landmarker.task  Local MediaPipe hand model
 requirements.txt             Python dependencies

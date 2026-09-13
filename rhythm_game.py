@@ -13,9 +13,12 @@ from music import MELODY_NOTES, MELODY_STEP_SECONDS
 
 
 DEFAULT_TEMPO_SCALE = 1.75
-DEFAULT_LEAD_IN_SECONDS = 0.65
 DEFAULT_COUNTDOWN_SECONDS = 3.0
 NODE_TRAVEL_SECONDS = 2.0
+# The first circle must enter only once the countdown reaches GO.  Its target
+# therefore sits one full travel duration after GO, giving it the same two
+# seconds of on-screen travel as every later circle.
+DEFAULT_LEAD_IN_SECONDS = NODE_TRAVEL_SECONDS
 
 PERFECT_WINDOW_SECONDS = 0.10
 GREAT_WINDOW_SECONDS = 0.22
@@ -47,7 +50,9 @@ def build_melody_chart(
     """Turn the melody into absolute offsets from the song's GO moment.
 
     ``tempo_scale`` stretches every gap without changing the tune.  A value
-    above 1 makes this first challenge slower and easier to play.
+    above 1 makes this first challenge slower and easier to play.  By default,
+    the first target is one node-travel duration after GO, so its circle enters
+    at the top of the screen at the exact moment the countdown ends.
     """
     if not math.isfinite(tempo_scale) or tempo_scale <= 0:
         raise ValueError("tempo_scale must be a positive, finite number")

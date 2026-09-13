@@ -15,7 +15,8 @@ The project already uses:
 - Landmark history for fingertip movement and direction estimates.
 - Path-based collision so fast motion between frames can still hit a node.
 - A timed rhythm challenge, scoring, synthesised audio, and privacy views.
-- A portfolio interface with title, gameplay HUD, help, results, and live technical telemetry.
+- A person-free performance stage with virtual drumsticks driven by hand landmarks.
+- A portfolio interface with title, gameplay HUD, help, results, a live camera-and-skeleton inset, and technical telemetry.
 
 MediaPipe is a pretrained model used by this project.
 It must not be described as a model trained by us.
@@ -39,11 +40,12 @@ Plans are ranked by career and learning value:
 ### Work
 
 - Create a polished title and tutorial screen.
-- Keep the gameplay screen clean for screen recording.
+- Keep the gameplay screen clean for screen recording with a person-free main stage.
 - Show score, combo, timing feedback, song progress, and hand-detection status clearly.
-- Keep the MediaPipe hand skeleton visible during the demonstration.
+- Keep the MediaPipe hand skeleton visible in the compact live-input inset during the demonstration.
+- Make the virtual drumsticks visibly follow the tracked hands without pretending they are a 3D reconstruction.
 - Add a debug view for FPS, inference time, detected hands, landmark count, and handedness-classification confidence when available.
-- Add a small OpenCV + MediaPipe label without making the interface look like a technical dashboard.
+- Keep OpenCV + MediaPipe details available in the optional technical view without making normal play look like a dashboard.
 - Move drawing responsibilities out of the main camera loop where practical.
 
 ### Definition of Done
@@ -52,12 +54,13 @@ Plans are ranked by career and learning value:
 - The title, gameplay, and results screens fit correctly at 1280×720 and 1920×1080.
 - Debug information can be turned on and off with one key.
 - Normal play remains readable when the debug view is off.
-- A 30-second recording clearly shows hand tracking, node contact, timing feedback, and score changes.
+- A 30-second recording clearly shows the live input skeleton, virtual drumsticks, node contact, timing feedback, and score changes.
 
 ### Learning outcomes
 
 - Separate computer-vision processing from interface rendering.
-- Design live overlays that stay readable over changing camera frames.
+- Design live overlays that stay readable over a generated performance stage.
+- Separate private camera evidence from the public-facing visual experience.
 - Present technical information without distracting from the interaction.
 
 ## Milestone 2 — Latency calibration and performance measurement
