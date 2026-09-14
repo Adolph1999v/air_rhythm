@@ -30,8 +30,8 @@ Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented an
 - A simplified 35-note opening melody from Beethoven's *Für Elise*
 - An absolute beat clock that stays aligned after a slow camera frame
 - First challenge circle enters from the top exactly when the countdown reaches `GO`
-- `PERFECT`, `GREAT`, and `GOOD` accuracy grades after timed hits
-- Score, combo, accuracy, final rank, countdown, and results screen
+- Reliable `HIT` feedback with optional `PERFECT`, `GREAT`, and `GOOD` timing bonuses
+- Score, combo, completion percentage, final rank, countdown, and results screen
 - A polished title screen and recording-friendly visual style
 - A compact gameplay HUD with score, combo, hit/miss totals, and song progress
 - Toggleable help and technical overlays
@@ -55,7 +55,7 @@ The complete career-focused roadmap, measurable completion checks, and deferred 
 
 ## Play music with your hands
 
-The game starts in **Challenge** mode. The first circle enters from the top at the exact moment the three-second countdown reaches `GO`, then takes two seconds to reach its first beat in the upper third of the screen. Each later circle carries one scheduled note from the opening of *Für Elise*. A clean falling circle is the only target marker; after a touch, the score system reports how close it was to the musical beat. If it is not hit in time, it keeps the same speed, continues down, and exits naturally at the bottom rather than vanishing at the beat point.
+The game starts in **Challenge** mode. The first circle enters from the top at the exact moment the three-second countdown reaches `GO`, then takes two seconds to reach its first beat in the upper third of the screen. Each later circle carries one scheduled note from the opening of *Für Elise*. A clean falling circle is the only target marker; after a touch, the score system reports how close it was to the musical beat. If it is never touched, it keeps the same speed, continues down, and becomes a miss only after leaving the bottom of the stage.
 
 The timing window is intentionally forgiving for camera play:
 
@@ -64,8 +64,11 @@ The timing window is intentionally forgiving for camera play:
 | Up to 0.10 seconds | `PERFECT` |
 | Up to 0.22 seconds | `GREAT` |
 | Up to 0.42 seconds | `GOOD` |
+| Outside 0.42 seconds while still visible | `HIT` |
 
-A very early contact waits until the playable window opens. If a circle passes the late edge of that window, it becomes a miss and breaks the combo. This keeps accidental contact near the top of the screen from playing a note far too early.
+Every visible circle remains physically hittable from the moment it enters at the top until it leaves through the bottom. Any contact removes the circle, plays its attached sound, and continues the hit combo. Contacts near the ideal song time can earn a `PERFECT`, `GREAT`, or `GOOD` timing bonus; contacts elsewhere receive the neutral `HIT` result. This avoids penalising the player for a hidden timing point after the fixed target and timing halo were removed from the interface.
+
+Every caught circle is worth 1,000 base points. Musical timing adds 500 for `PERFECT`, 250 for `GREAT`, or 100 for `GOOD`; a normal `HIT` keeps the full base value. Completion is calculated only from caught circles versus misses, so catching every circle produces 100% completion regardless of the optional timing bonuses.
 
 Timing and hand movement are separate. `PERFECT`, `GREAT`, and `GOOD` describe closeness to the musical beat. A normal touch is enough to hit; a stronger or deliberate downward/forward movement adds a small loudness and score bonus. The contact path between camera frames is still checked, so a quick sweep can count even when no single frame captures the fingertip inside the circle.
 

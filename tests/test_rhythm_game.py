@@ -66,31 +66,52 @@ class RoundScoreTests(unittest.TestCase):
     def test_combo_and_movement_add_small_bonuses_while_miss_breaks_streak(self):
         score = RoundScore()
 
-        self.assertEqual(score.record_hit(TimingGrade.PERFECT, "GOOD"), 1000)
-        self.assertEqual(score.record_hit(TimingGrade.GREAT, "PERFECT"), 800)
+        self.assertEqual(score.record_hit(TimingGrade.PERFECT, "GOOD"), 1500)
+        self.assertEqual(score.record_hit(TimingGrade.GREAT, "PERFECT"), 1350)
         self.assertEqual(score.combo, 2)
         score.record_miss()
         self.assertEqual(score.combo, 0)
         self.assertEqual(score.max_combo, 2)
-        self.assertEqual(score.record_hit(TimingGrade.GOOD, "GREAT"), 440)
-        self.assertEqual(score.score, 2240)
+        self.assertEqual(score.record_hit(TimingGrade.GOOD, "GREAT"), 1140)
+        self.assertEqual(score.score, 3990)
         self.assertEqual(score.total_judged, 4)
-        self.assertAlmostEqual(score.accuracy, 56.25)
-        self.assertEqual(score.rank, "C")
+        self.assertAlmostEqual(score.completion_accuracy, 75.0)
+        self.assertAlmostEqual(score.timing_accuracy, 56.25)
+        self.assertEqual(score.rank, "A")
 
-    def test_ranks_follow_accuracy_thresholds(self):
-        perfect = RoundScore()
-        perfect.record_hit(TimingGrade.PERFECT)
-        self.assertEqual(perfect.rank, "S")
+    def test_basic_contact_is_a_hit_and_continues_the_combo(self):
+        score = RoundScore()
+        score.record_hit(TimingGrade.PERFECT)
 
-        great = RoundScore()
-        great.record_hit(TimingGrade.GREAT)
-        self.assertEqual(great.rank, "A")
+        self.assertEqual(score.record_hit(TimingGrade.HIT, "PERFECT"), 1100)
+        self.assertEqual(score.total_hits, 2)
+        self.assertEqual(score.basic_hits, 1)
+        self.assertEqual(score.misses, 0)
+        self.assertEqual(score.combo, 2)
+        self.assertAlmostEqual(score.completion_accuracy, 100.0)
+        self.assertAlmostEqual(score.timing_accuracy, 62.5)
 
-        mixed = RoundScore()
-        mixed.record_hit(TimingGrade.GREAT)
-        mixed.record_hit(TimingGrade.GOOD)
-        self.assertEqual(mixed.rank, "B")
+    def test_catching_the_full_melody_gives_full_completion_and_a_strong_score(self):
+        score = RoundScore()
+        for _ in MELODY_NOTES:
+            score.record_hit(TimingGrade.HIT)
+
+        self.assertEqual(score.total_hits, len(MELODY_NOTES))
+        self.assertEqual(score.score, 40_900)
+        self.assertEqual(score.completion_accuracy, 100.0)
+        self.assertEqual(score.rank, "S")
+
+    def test_ranks_follow_circle_completion_thresholds(self):
+        scores = []
+        for hits, misses in ((9, 1), (3, 1), (3, 2), (1, 1)):
+            score = RoundScore()
+            for _ in range(hits):
+                score.record_hit(TimingGrade.HIT)
+            for _ in range(misses):
+                score.record_miss()
+            scores.append(score)
+
+        self.assertEqual([score.rank for score in scores], ["S", "A", "B", "C"])
 
 
 class RhythmRoundTests(unittest.TestCase):
@@ -171,23 +192,22 @@ class RhythmRoundTests(unittest.TestCase):
             TimingGrade.GREAT,
         )
         self.assertIs(self.round.phase_at(999.0), RoundPhase.PLAYING)
-        self.assertIsNone(
-            self.round.judge_hit(2, self.round.target_time(2) + 0.5)
+        self.assertIs(
+            self.round.judge_hit(2, self.round.target_time(2) + 0.5),
+            TimingGrade.HIT,
         )
         self.assertIs(self.round.phase_at(999.0), RoundPhase.RESULTS)
         self.assertEqual(self.round.score.total_judged, 3)
-        self.assertEqual(self.round.score.misses, 1)
+        self.assertEqual(self.round.score.total_hits, 3)
+        self.assertEqual(self.round.score.basic_hits, 1)
+        self.assertEqual(self.round.score.misses, 0)
 
-    def test_expired_windows_become_misses_once(self):
-        cutoff = self.round.target_time(1) + GOOD_WINDOW_SECONDS
-        self.assertEqual(self.round.expire_misses(cutoff), (self.chart[0],))
-        self.assertEqual(
-            self.round.expire_misses(cutoff + 0.001),
-            (self.chart[1],),
-        )
-        self.assertEqual(self.round.score.misses, 2)
+    def test_unhit_event_becomes_a_miss_only_when_explicitly_recorded(self):
+        self.assertFalse(self.round.is_resolved(0))
+        self.assertTrue(self.round.record_miss(0))
+        self.assertEqual(self.round.score.misses, 1)
         self.assertFalse(self.round.record_miss(0))
-        self.assertEqual(self.round.score.misses, 2)
+        self.assertEqual(self.round.score.misses, 1)
 
     def test_reset_restarts_schedule_and_score_at_a_new_time(self):
         self.round.due_events(999.0)

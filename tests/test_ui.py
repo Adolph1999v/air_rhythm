@@ -43,13 +43,14 @@ class UserInterfaceTests(unittest.TestCase):
             lambda frame: ui.draw_results(
                 frame,
                 score=12500,
-                accuracy=87.5,
+                completion=87.5,
                 rank="A",
                 perfect=8,
                 great=4,
                 good=2,
                 misses=1,
                 max_combo=9,
+                basic_hits=3,
             ),
         )
         for drawer in drawers:
@@ -95,13 +96,14 @@ class UserInterfaceTests(unittest.TestCase):
                 result = ui.draw_results(
                     frame,
                     score=18700,
-                    accuracy=87.5,
+                    completion=87.5,
                     rank="A",
                     perfect=12,
                     great=5,
                     good=1,
                     misses=2,
                     max_combo=11,
+                    basic_hits=2,
                     song_label="Fur Elise challenge",
                 )
                 self.assertIs(result, frame)

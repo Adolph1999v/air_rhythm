@@ -77,21 +77,22 @@ def build_melody_chart(
 
 
 class TimingGrade(Enum):
-    """Timing feedback, its base score, and its OpenCV-friendly BGR color."""
+    """Timing feedback, score bonus, and OpenCV-friendly BGR color."""
 
-    PERFECT = ("PERFECT", 1000, (80, 235, 110), 1.0)
-    GREAT = ("GREAT", 700, (40, 210, 255), 0.75)
-    GOOD = ("GOOD", 400, (255, 210, 80), 0.5)
+    PERFECT = ("PERFECT", 500, (80, 235, 110), 1.0)
+    GREAT = ("GREAT", 250, (40, 210, 255), 0.75)
+    GOOD = ("GOOD", 100, (255, 210, 80), 0.5)
+    HIT = ("HIT", 0, (210, 145, 255), 0.25)
 
     def __init__(
         self,
         label: str,
-        points: int,
+        score_bonus: int,
         color: tuple[int, int, int],
         accuracy_weight: float,
     ) -> None:
         self.label = label
-        self.points = points
+        self.score_bonus = score_bonus
         self.color = color
         self.accuracy_weight = accuracy_weight
 
@@ -116,6 +117,7 @@ MOVEMENT_BONUS = {
     "GREAT": 40,
     "PERFECT": 80,
 }
+BASE_HIT_POINTS = 1000
 COMBO_BONUS_PER_HIT = 20
 MAX_COMBO_BONUS = 200
 
@@ -130,6 +132,7 @@ class RoundScore:
     perfect: int = 0
     great: int = 0
     good: int = 0
+    basic_hits: int = 0
     misses: int = 0
 
     def record_hit(
@@ -143,19 +146,27 @@ class RoundScore:
 
         self.combo += 1
         self.max_combo = max(self.max_combo, self.combo)
+
         if grade is TimingGrade.PERFECT:
             self.perfect += 1
         elif grade is TimingGrade.GREAT:
             self.great += 1
-        else:
+        elif grade is TimingGrade.GOOD:
             self.good += 1
+        else:
+            self.basic_hits += 1
 
         combo_bonus = min(
             (self.combo - 1) * COMBO_BONUS_PER_HIT,
             MAX_COMBO_BONUS,
         )
         movement_key = (movement_rating or "").upper()
-        points = grade.points + combo_bonus + MOVEMENT_BONUS.get(movement_key, 0)
+        points = (
+            BASE_HIT_POINTS
+            + grade.score_bonus
+            + combo_bonus
+            + MOVEMENT_BONUS.get(movement_key, 0)
+        )
         self.score += points
         return points
 
@@ -167,28 +178,41 @@ class RoundScore:
     @property
     def total_judged(self) -> int:
         """Return the number of notes that have received a final result."""
-        return self.perfect + self.great + self.good + self.misses
+        return self.total_hits + self.misses
 
     @property
-    def accuracy(self) -> float:
-        """Return timing accuracy from 0 to 100, including missed notes."""
+    def total_hits(self) -> int:
+        """Return every touched note, including contacts outside the beat window."""
+        return self.perfect + self.great + self.good + self.basic_hits
+
+    @property
+    def completion_accuracy(self) -> float:
+        """Return the percentage of circles that were successfully touched."""
+        if self.total_judged == 0:
+            return 0.0
+        return self.total_hits / self.total_judged * 100.0
+
+    @property
+    def timing_accuracy(self) -> float:
+        """Return optional timing quality without reducing hit completion."""
         if self.total_judged == 0:
             return 0.0
         weighted_hits = (
             self.perfect * TimingGrade.PERFECT.accuracy_weight
             + self.great * TimingGrade.GREAT.accuracy_weight
             + self.good * TimingGrade.GOOD.accuracy_weight
+            + self.basic_hits * TimingGrade.HIT.accuracy_weight
         )
         return weighted_hits / self.total_judged * 100.0
 
     @property
     def rank(self) -> str:
-        """Turn accuracy into a simple showcase-friendly final rank."""
-        if self.accuracy >= 90:
+        """Turn circle completion into a simple showcase-friendly rank."""
+        if self.completion_accuracy >= 90:
             return "S"
-        if self.accuracy >= 75:
+        if self.completion_accuracy >= 75:
             return "A"
-        if self.accuracy >= 60:
+        if self.completion_accuracy >= 60:
             return "B"
         return "C"
 
@@ -316,12 +340,12 @@ class RhythmRound:
         event_or_index: ChartEvent | int,
         hit_at: float,
         movement_rating: str | None = None,
-    ) -> TimingGrade | None:
+    ) -> TimingGrade:
         """Resolve a touched node from its timing and update the round score.
 
-        A touch outside the GOOD window still resolves the node as a miss.  The
-        camera layer may still play its note, so every physical touch remains
-        responsive while close-to-the-beat touches earn points.
+        Every visible touch is a hit. Contacts outside the optional timing-bonus
+        window receive the neutral HIT result, because the interface does not
+        show a fixed timing target that the player is expected to follow.
         """
         event = self._event(event_or_index)
         if event.index in self._resolved_indices:
@@ -329,12 +353,12 @@ class RhythmRound:
         if not math.isfinite(hit_at):
             raise ValueError("hit_at must be finite")
 
-        grade = grade_timing(hit_at - self.target_time(event))
+        grade = (
+            grade_timing(hit_at - self.target_time(event))
+            or TimingGrade.HIT
+        )
         self._resolved_indices.add(event.index)
-        if grade is None:
-            self.score.record_miss()
-        else:
-            self.score.record_hit(grade, movement_rating)
+        self.score.record_hit(grade, movement_rating)
         return grade
 
     def record_miss(self, event_or_index: ChartEvent | int) -> bool:
@@ -345,17 +369,6 @@ class RhythmRound:
         self._resolved_indices.add(event.index)
         self.score.record_miss()
         return True
-
-    def expire_misses(self, now: float) -> tuple[ChartEvent, ...]:
-        """Resolve all notes whose final GOOD timing window has passed."""
-        missed = []
-        for event in self.chart:
-            if event.index in self._resolved_indices:
-                continue
-            if now > self.target_time(event) + GOOD_WINDOW_SECONDS:
-                self.record_miss(event)
-                missed.append(event)
-        return tuple(missed)
 
     def is_resolved(self, event_or_index: ChartEvent | int) -> bool:
         """Return whether an event already became a hit or miss."""

@@ -143,7 +143,7 @@ class HitAudioTests(unittest.TestCase):
             64, instrument="keys", velocity=0.75
         )
 
-    def test_song_contact_waits_for_window_then_late_node_becomes_miss(self):
+    def test_song_contact_is_hittable_before_the_timing_window(self):
         event = ChartEvent(0, 60, 0.65)
         rhythm_round = RhythmRound(started_at=100.0, chart=(event,))
         target_time = rhythm_round.target_time(event)
@@ -162,14 +162,62 @@ class HitAudioTests(unittest.TestCase):
         remaining, hits, misses = update_challenge_nodes(
             [node], early_time, [motion], rhythm_round, 720
         )
-        self.assertEqual((len(remaining), hits, misses), (1, [], 0))
-        self.assertEqual(rhythm_round.resolved_count, 0)
-
-        remaining, hits, misses = update_challenge_nodes(
-            remaining, target_time + 0.421, [], rhythm_round, 720
+        self.assertEqual((remaining, len(hits), misses), ([], 1, 0))
+        self.assertIs(hits[0].timing_grade, TimingGrade.HIT)
+        self.assertEqual(rhythm_round.score.total_hits, 1)
+        self.assertEqual(rhythm_round.score.misses, 0)
+        play_node_hits(hits, self.audio, self.melody, True)
+        self.audio.play_note.assert_called_once_with(
+            60, instrument="keys", velocity=0.75
         )
-        self.assertEqual((len(remaining), hits, misses), (1, [], 1))
-        self.assertEqual(rhythm_round.score.misses, 1)
+
+    def test_song_contact_remains_hittable_near_the_bottom(self):
+        event = ChartEvent(0, 60, 0.65)
+        rhythm_round = RhythmRound(started_at=100.0, chart=(event,))
+        node = create_challenge_node(
+            event,
+            rhythm_round,
+            1280,
+            720,
+            rhythm_round.spawn_time(event),
+            [],
+        )
+        node.x = 300
+        bottom_y = 720 - node.radius
+        bottom_time = node.spawn_time + (bottom_y - node.radius) / node.speed
+        motion = FingertipMotion(
+            (300, round(bottom_y)),
+            (300, round(bottom_y)),
+            0.0,
+            None,
+        )
+        remaining, hits, misses = update_challenge_nodes(
+            [node], bottom_time, [motion], rhythm_round, 720
+        )
+        self.assertEqual((remaining, len(hits), misses), ([], 1, 0))
+        self.assertIs(hits[0].timing_grade, TimingGrade.HIT)
+        play_node_hits(hits, self.audio, self.melody, True)
+        self.audio.play_note.assert_called_once_with(
+            60, instrument="keys", velocity=0.75
+        )
+
+    def test_unhit_song_node_becomes_a_miss_only_after_leaving_the_screen(self):
+        event = ChartEvent(0, 60, 0.65)
+        rhythm_round = RhythmRound(started_at=100.0, chart=(event,))
+        target_time = rhythm_round.target_time(event)
+        node = create_challenge_node(
+            event,
+            rhythm_round,
+            1280,
+            720,
+            rhythm_round.spawn_time(event),
+            [],
+        )
+        remaining, hits, misses = update_challenge_nodes(
+            [node], target_time + 0.421, [], rhythm_round, 720
+        )
+        self.assertEqual((len(remaining), hits, misses), (1, [], 0))
+        self.assertEqual(rhythm_round.score.misses, 0)
 
         remaining, hits, misses = update_challenge_nodes(
             remaining,
@@ -178,7 +226,8 @@ class HitAudioTests(unittest.TestCase):
             rhythm_round,
             720,
         )
-        self.assertEqual((remaining, hits, misses), ([], [], 0))
+        self.assertEqual((remaining, hits, misses), ([], [], 1))
+        self.assertEqual(rhythm_round.score.misses, 1)
 
     def test_a_complete_unplayed_challenge_reaches_results(self):
         rhythm_round = RhythmRound(started_at=0.0)

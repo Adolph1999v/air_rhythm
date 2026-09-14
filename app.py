@@ -30,11 +30,9 @@ from performance_stage import (
 )
 from rhythm_game import (
     ChartEvent,
-    GOOD_WINDOW_SECONDS,
     RhythmRound,
     RoundPhase,
     TimingGrade,
-    grade_timing,
 )
 import ui
 
@@ -575,7 +573,7 @@ def update_challenge_nodes(
     rhythm_round: RhythmRound,
     frame_height: int,
 ) -> tuple[list[FallingNode], list[NodeHit], int]:
-    """Judge timed contacts while letting missed circles exit at the bottom."""
+    """Keep each visible song circle hittable until it exits at the bottom."""
     remaining_nodes = []
     node_hits = []
     missed_node_count = 0
@@ -589,21 +587,18 @@ def update_challenge_nodes(
         # camera frame is slow. Both jump to the correct point on the same clock.
         node.y = challenge_node_y(node, current_time)
         timing_error = current_time - node.target_time
-        timing_grade = grade_timing(timing_error)
         collision_radius = node.radius + FINGERTIP_TOUCH_RADIUS
         node_center = (round(node.x), round(node.y))
 
-        touching_motions = []
-        if timing_grade is not None:
-            touching_motions = [
-                motion
-                for motion in fingertip_motions
-                if movement_path_overlaps_node(
-                    motion,
-                    node_center,
-                    collision_radius,
-                )
-            ]
+        touching_motions = [
+            motion
+            for motion in fingertip_motions
+            if movement_path_overlaps_node(
+                motion,
+                node_center,
+                collision_radius,
+            )
+        ]
 
         if touching_motions:
             movement_rating = max(
@@ -623,11 +618,9 @@ def update_challenge_nodes(
                     timing_error=timing_error,
                 )
             )
-        elif timing_error > GOOD_WINDOW_SECONDS:
+        elif node.y - node.radius > frame_height:
             if rhythm_round.record_miss(node.chart_index):
                 missed_node_count += 1
-            if node.y - node.radius <= frame_height:
-                remaining_nodes.append(node)
         else:
             remaining_nodes.append(node)
 
@@ -722,6 +715,7 @@ def draw_hit_effects(
         "GOOD": (255, 255, 255),
         "GREAT": (40, 210, 255),
         "PERFECT": (80, 255, 80),
+        "HIT": (210, 145, 255),
         "TOUCH": (255, 255, 255),
         "STRONG": (40, 210, 255),
         "POWER": (80, 255, 80),
@@ -1009,11 +1003,7 @@ def main() -> None:
                         rhythm_round,
                         stage_height,
                     )
-                    hit_count = (
-                        rhythm_round.score.perfect
-                        + rhythm_round.score.great
-                        + rhythm_round.score.good
-                    )
+                    hit_count = rhythm_round.score.total_hits
                     miss_count = rhythm_round.score.misses
                     if (
                         rhythm_round.phase_at(current_time) is RoundPhase.RESULTS
@@ -1221,13 +1211,14 @@ def main() -> None:
                     ui.draw_results(
                         display_frame,
                         score=score.score,
-                        accuracy=score.accuracy,
+                        completion=score.completion_accuracy,
                         rank=score.rank,
                         perfect=score.perfect,
                         great=score.great,
                         good=score.good,
                         misses=score.misses,
                         max_combo=score.max_combo,
+                        basic_hits=score.basic_hits,
                         song_label=f"{MELODY_TITLE} challenge",
                         replay_hint="R / SPACE  Replay     T  Title",
                     )

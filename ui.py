@@ -709,13 +709,14 @@ def draw_results(
     frame,
     *,
     score: int,
-    accuracy: float,
+    completion: float,
     rank: str,
     perfect: int,
     great: int,
     good: int,
     misses: int,
     max_combo: int,
+    basic_hits: int = 0,
     song_label: str = "Song challenge",
     replay_hint: str = "Press R to replay",
 ) -> Any:
@@ -765,14 +766,14 @@ def draw_results(
         min_scale=0.15,
     )
 
-    accuracy_value = 0.0
+    completion_value = 0.0
     try:
-        accuracy_value = float(accuracy)
+        completion_value = float(completion)
     except (TypeError, ValueError):
         pass
-    if not math.isfinite(accuracy_value):
-        accuracy_value = 0.0
-    accuracy_value = max(0.0, min(100.0, accuracy_value))
+    if not math.isfinite(completion_value):
+        completion_value = 0.0
+    completion_value = max(0.0, min(100.0, completion_value))
     rank_text = str(rank).upper()[:3] or "-"
     rank_y = song_y + max(39, int(84 * scale))
     draw_text(
@@ -811,7 +812,7 @@ def draw_results(
     )
     draw_text(
         frame,
-        f"SCORE  |  ACCURACY {accuracy_value:.1f}%  |  BEST COMBO x{max(0, _safe_int(max_combo))}",
+        f"SCORE  |  COMPLETION {completion_value:.1f}%  |  BEST COMBO x{max(0, _safe_int(max_combo))}",
         (center_x, summary_y + max(18, int(32 * scale))),
         max(0.20, 0.33 * scale),
         MUTED,
@@ -826,6 +827,7 @@ def draw_results(
         f"PERFECT {max(0, _safe_int(perfect))}   |   "
         f"GREAT {max(0, _safe_int(great))}   |   "
         f"GOOD {max(0, _safe_int(good))}   |   "
+        f"HIT {max(0, _safe_int(basic_hits))}   |   "
         f"MISS {max(0, _safe_int(misses))}"
     )
     draw_text(
@@ -848,7 +850,7 @@ def draw_results(
         meter_top,
         meter_right,
         meter_top + max(3, int(5 * scale)),
-        accuracy_value / 100.0,
+        completion_value / 100.0,
     )
     draw_text(
         frame,
