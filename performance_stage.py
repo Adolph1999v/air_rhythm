@@ -15,6 +15,7 @@ import numpy as np
 
 
 HAND_LANDMARK_COUNT = 21
+FINGERTIP_INDICES = (4, 8, 12, 16, 20)
 MAX_CACHED_BACKGROUNDS = 3
 
 # OpenCV uses BGR.  The materials are deliberately quieter than the playable
@@ -183,8 +184,8 @@ def _hand_points(hand, width: int, height: int) -> np.ndarray | None:
             return None
         points.append(
             (
-                int(round(np.clip(x, 0.0, 1.0) * (width - 1))),
-                int(round(np.clip(y, 0.0, 1.0) * (height - 1))),
+                int(np.clip(x * width, 0, width - 1)),
+                int(np.clip(y * height, 0, height - 1)),
             )
         )
     return np.asarray(points, dtype=np.float32)
@@ -289,6 +290,59 @@ def draw_virtual_drumsticks(frame: np.ndarray, hand_landmarks) -> np.ndarray:
         body_radius = max(4, round(min_dimension * 0.0105))
         accent = STICK_ACCENTS[hand_index % len(STICK_ACCENTS)]
         _draw_stick(frame, handle, tip, body_radius, accent)
+    return frame
+
+
+def draw_collision_points(frame: np.ndarray, hand_landmarks) -> np.ndarray:
+    """Show every fingertip position used by the collision system.
+
+    The index-finger point sits directly on the virtual drumstick tip.  Four
+    smaller points make the other active fingertips visible as well, so the
+    generated stage never hides where a collision can actually happen.
+    """
+    width, height = _frame_size(frame)
+    min_dimension = min(width, height)
+    if hand_landmarks is None:
+        return frame
+
+    core_radius = max(2, round(min_dimension * 0.0042))
+    glow_radius = core_radius * 3
+    for hand_index, hand in enumerate(hand_landmarks):
+        points = _hand_points(hand, width, height)
+        if points is None:
+            continue
+        accent = STICK_ACCENTS[hand_index % len(STICK_ACCENTS)]
+        for fingertip_index in FINGERTIP_INDICES:
+            point = tuple(np.rint(points[fingertip_index]).astype(int))
+            left = max(0, point[0] - glow_radius)
+            right = min(width, point[0] + glow_radius + 1)
+            top = max(0, point[1] - glow_radius)
+            bottom = min(height, point[1] + glow_radius + 1)
+            if left >= right or top >= bottom:
+                continue
+
+            roi = frame[top:bottom, left:right]
+            glow = roi.copy()
+            local_point = (point[0] - left, point[1] - top)
+            cv2.circle(
+                glow,
+                local_point,
+                glow_radius,
+                accent,
+                -1,
+                cv2.LINE_AA,
+            )
+            cv2.addWeighted(glow, 0.18, roi, 0.82, 0, roi)
+            cv2.circle(frame, point, core_radius + 1, (18, 22, 34), -1, cv2.LINE_AA)
+            cv2.circle(frame, point, core_radius, accent, -1, cv2.LINE_AA)
+            cv2.circle(
+                frame,
+                point,
+                max(1, core_radius // 2),
+                (248, 251, 255),
+                -1,
+                cv2.LINE_AA,
+            )
     return frame
 
 
@@ -409,5 +463,6 @@ def draw_camera_inset(
 __all__ = [
     "create_performance_stage",
     "draw_camera_inset",
+    "draw_collision_points",
     "draw_virtual_drumsticks",
 ]

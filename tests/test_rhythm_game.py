@@ -202,6 +202,28 @@ class RhythmRoundTests(unittest.TestCase):
         self.assertEqual(self.round.score.basic_hits, 1)
         self.assertEqual(self.round.score.misses, 0)
 
+    def test_out_of_order_hits_cannot_earn_timing_bonuses(self):
+        self.assertEqual(self.round.next_unresolved_index, 0)
+        self.assertFalse(self.round.timing_bonus_available(1))
+
+        self.assertIs(
+            self.round.judge_hit(1, self.round.target_time(1)),
+            TimingGrade.HIT,
+        )
+        self.assertFalse(self.round.timing_bonus_available(0))
+        self.assertIs(
+            self.round.judge_hit(0, self.round.target_time(0)),
+            TimingGrade.HIT,
+        )
+
+        self.assertTrue(self.round.timing_bonus_available(2))
+        self.assertIs(
+            self.round.judge_hit(2, self.round.target_time(2)),
+            TimingGrade.PERFECT,
+        )
+        self.assertEqual(self.round.score.basic_hits, 2)
+        self.assertEqual(self.round.score.perfect, 1)
+
     def test_unhit_event_becomes_a_miss_only_when_explicitly_recorded(self):
         self.assertFalse(self.round.is_resolved(0))
         self.assertTrue(self.round.record_miss(0))

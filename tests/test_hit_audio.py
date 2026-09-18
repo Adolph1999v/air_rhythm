@@ -3,6 +3,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
+import numpy as np
+
 from app import (
     CHALLENGE_TARGET_HEIGHT_RATIO,
     FallingNode,
@@ -10,6 +12,7 @@ from app import (
     NodeHit,
     challenge_node_y,
     create_challenge_node,
+    draw_falling_nodes,
     node_radius_for_frame,
     play_node_hits,
     run_sound_test,
@@ -201,6 +204,49 @@ class HitAudioTests(unittest.TestCase):
             60, instrument="keys", velocity=0.75
         )
 
+    def test_skipping_a_circle_marks_both_contacts_out_of_order(self):
+        chart = (
+            ChartEvent(0, 60, 2.0),
+            ChartEvent(1, 64, 2.4),
+        )
+        rhythm_round = RhythmRound(started_at=100.0, chart=chart)
+        first = create_challenge_node(
+            chart[0], rhythm_round, 1280, 720,
+            rhythm_round.spawn_time(chart[0]), [],
+        )
+        second = create_challenge_node(
+            chart[1], rhythm_round, 1280, 720,
+            rhythm_round.spawn_time(chart[1]), [first],
+        )
+        first.x = 180
+        second.x = 720
+        hit_time = rhythm_round.target_time(chart[1])
+        second_y = round(challenge_node_y(second, hit_time))
+
+        remaining, hits, _ = update_challenge_nodes(
+            [first, second],
+            hit_time,
+            [FingertipMotion((720, second_y), (720, second_y), 0.0, None)],
+            rhythm_round,
+            720,
+        )
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].node.chart_index, 1)
+        self.assertIs(hits[0].timing_grade, TimingGrade.HIT)
+        self.assertFalse(hits[0].in_order)
+
+        first_y = round(challenge_node_y(first, hit_time))
+        _, earlier_hits, _ = update_challenge_nodes(
+            remaining,
+            hit_time,
+            [FingertipMotion((180, first_y), (180, first_y), 0.0, None)],
+            rhythm_round,
+            720,
+        )
+        self.assertEqual(len(earlier_hits), 1)
+        self.assertIs(earlier_hits[0].timing_grade, TimingGrade.HIT)
+        self.assertFalse(earlier_hits[0].in_order)
+
     def test_unhit_song_node_becomes_a_miss_only_after_leaving_the_screen(self):
         event = ChartEvent(0, 60, 0.65)
         rhythm_round = RhythmRound(started_at=100.0, chart=(event,))
@@ -286,6 +332,29 @@ class HitAudioTests(unittest.TestCase):
 
         self.assertAlmostEqual(at_beat - before, node.speed * sample_seconds)
         self.assertAlmostEqual(after - at_beat, node.speed * sample_seconds)
+
+    def test_chart_targets_show_order_and_brighten_the_next_unhit_note(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        first = self.node(y=180)
+        first.x = 180
+        first.chart_index = 0
+        first.midi_note = 60
+        second = self.node(y=180)
+        second.x = 420
+        second.chart_index = 1
+        second.midi_note = 64
+
+        with patch("app.cv2.putText", wraps=__import__("cv2").putText) as put_text:
+            draw_falling_nodes(frame, [second, first])
+
+        labels = [call.args[1] for call in put_text.call_args_list]
+        self.assertIn("01 / C4", labels)
+        self.assertIn("02 / E4", labels)
+        sample_y = 180 - first.radius // 2
+        self.assertGreater(
+            int(frame[sample_y, 180].sum()),
+            int(frame[sample_y, 420].sum()),
+        )
 
 
 if __name__ == "__main__":

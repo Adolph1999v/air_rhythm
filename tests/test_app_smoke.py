@@ -1,6 +1,7 @@
 """Exercise one complete app frame without opening a camera, window, or speaker."""
 
 from types import SimpleNamespace
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
@@ -143,6 +144,23 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(update_challenge.call_count, 2)
         self.assertEqual(audio.stop_all.call_count, 2)
 
+    def test_benchmark_key_records_and_saves_a_privacy_safe_report(self):
+        camera = FakeCamera()
+        audio = Mock(enabled=True, muted=False, error_message=None)
+        audio.start.return_value = True
+
+        with patch(
+            "app.save_benchmark_report",
+            return_value=(Path("report.json"), Path("report.md")),
+        ) as save_report:
+            self.run_app(camera, audio, [ord("b"), ord("b"), ord("q")])
+
+        save_report.assert_called_once()
+        report = save_report.call_args.args[0]
+        self.assertEqual(report["frame_count"], 1)
+        self.assertFalse(report["privacy"]["camera_images_saved"])
+        self.assertFalse(report["privacy"]["landmark_coordinates_saved"])
+
     def test_handedness_score_is_not_mislabeled_as_tracking_accuracy(self):
         result = SimpleNamespace(
             handedness=[
@@ -153,7 +171,6 @@ class AppSmokeTests(unittest.TestCase):
         )
 
         self.assertEqual(app.handedness_confidences(result), (0.93, 1.0))
-
 
 if __name__ == "__main__":
     unittest.main()

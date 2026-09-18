@@ -31,6 +31,7 @@ DEFAULT_CONTROLS = (
     ("SPACE", "Start / replay"),
     ("1 / 2", "Challenge / free play"),
     ("R", "Restart current mode"),
+    ("B", "Start / save benchmark"),
     ("P", "Input inset privacy"),
     ("M", "Mute"),
     ("D", "CV / ML details"),
@@ -490,7 +491,7 @@ def draw_title_screen(
         max_width=max(40, int(width * 0.72)),
         min_scale=0.15,
     )
-    controls = "1 Challenge   2 Free play   H Help   D Technical view   Q Quit"
+    controls = "1 Challenge   2 Free play   B Benchmark   D Technical view   Q Quit"
     draw_text(
         frame,
         controls,
@@ -705,6 +706,89 @@ def draw_countdown(
     return frame
 
 
+def draw_benchmark_status(
+    frame,
+    summary: Mapping[str, Any] | None = None,
+    *,
+    notice: str | None = None,
+) -> Any:
+    """Draw a compact recording badge without exposing camera information."""
+    info = dict(summary or {})
+    active = bool(info.get("active"))
+    if not active and not notice:
+        return frame
+
+    width, height = _frame_size(frame)
+    scale = _ui_scale(frame)
+    margin = max(5, int(14 * scale))
+    panel_width = min(
+        width - margin * 2,
+        max(160, int(300 * scale)),
+    )
+    panel_height = max(28, int((78 if active else 42) * scale))
+    top = max(margin, int(height * 0.12))
+    bottom = min(height - margin, top + panel_height)
+    right = min(width - margin, margin + panel_width)
+    accent = RED if active else GREEN
+    draw_glass_panel(
+        frame,
+        (margin, top),
+        (right, bottom),
+        accent=accent,
+        alpha=0.68,
+        radius=max(8, int(18 * scale)),
+    )
+
+    text_left = margin + max(9, int(16 * scale))
+    text_width = max(30, right - text_left - max(7, int(12 * scale)))
+    first_y = top + max(14, int(24 * scale))
+    if not active:
+        draw_text(
+            frame,
+            str(notice),
+            (text_left, first_y),
+            max(0.23, 0.39 * scale),
+            accent,
+            1,
+            max_width=text_width,
+            min_scale=0.15,
+        )
+        return frame
+
+    elapsed = max(0.0, float(info.get("elapsed_seconds", 0.0) or 0.0))
+    frames = max(0, _safe_int(info.get("frames", 0)))
+    draw_text(
+        frame,
+        f"BENCHMARK REC  {elapsed:05.1f}s  |  {frames} FRAMES",
+        (text_left, first_y),
+        max(0.22, 0.38 * scale),
+        RED,
+        1,
+        max_width=text_width,
+        min_scale=0.14,
+    )
+    average_fps = info.get("average_fps")
+    fps_text = (
+        "--"
+        if not isinstance(average_fps, (int, float)) or not math.isfinite(average_fps)
+        else f"{average_fps:.1f}"
+    )
+    second_y = min(bottom - 5, first_y + max(13, int(22 * scale)))
+    draw_text(
+        frame,
+        f"AVG {fps_text} FPS  |  SLOW {max(0, _safe_int(info.get('slow_frames')))}  |  "
+        f"DROP~ {max(0, _safe_int(info.get('estimated_dropped_frames')))}  |  "
+        f"AUDIO {max(0, _safe_int(info.get('audio_samples')))}",
+        (text_left, second_y),
+        max(0.18, 0.31 * scale),
+        MUTED,
+        1,
+        max_width=text_width,
+        min_scale=0.12,
+    )
+    return frame
+
+
 def draw_results(
     frame,
     *,
@@ -900,7 +984,7 @@ def draw_help_overlay(
         align="center", max_width=available, min_scale=0.18,
     )
 
-    rows = list(controls)[:8]
+    rows = list(controls)[:9]
     if rows:
         content_top = guide_y + max(18, int(48 * scale))
         content_bottom = bottom - max(21, int(42 * scale))
@@ -1019,8 +1103,16 @@ def draw_debug_overlay(
     ]
     if confidence is not None:
         lines.append((f"Mean hand-class confidence  {confidence}", GREEN))
+    if info.get("capture_ms") is not None:
+        lines.append((f"Camera capture  {info['capture_ms']} ms", WHITE))
     if info.get("inference_ms") is not None:
         lines.append((f"Inference  {info['inference_ms']} ms", WHITE))
+    if info.get("update_ms") is not None:
+        lines.append((f"Game update  {info['update_ms']} ms", WHITE))
+    if info.get("render_ms") is not None:
+        lines.append((f"Rendering  {info['render_ms']} ms", WHITE))
+    if info.get("frame_ms") is not None:
+        lines.append((f"Frame pipeline  {info['frame_ms']} ms", WHITE))
     if info.get("gesture"):
         lines.append((f"Motion rule  {info['gesture']}", GOLD))
     lines.extend(
@@ -1068,6 +1160,7 @@ __all__ = [
     "TEXT_SHADOW",
     "WHITE",
     "draw_brand_badge",
+    "draw_benchmark_status",
     "draw_countdown",
     "draw_debug_overlay",
     "draw_game_hud",

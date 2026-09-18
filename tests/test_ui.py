@@ -37,6 +37,18 @@ class UserInterfaceTests(unittest.TestCase):
             lambda frame: ui.draw_brand_badge(frame),
             lambda frame: ui.draw_glass_panel(frame, (-20, -10), (300, 190)),
             lambda frame: ui.draw_glow_circle(frame, (80, 60), 20, pulse=1.5),
+            lambda frame: ui.draw_benchmark_status(
+                frame,
+                {
+                    "active": True,
+                    "elapsed_seconds": 61.2,
+                    "frames": 1800,
+                    "average_fps": 29.7,
+                    "slow_frames": 12,
+                    "estimated_dropped_frames": 3,
+                    "audio_samples": 20,
+                },
+            ),
             lambda frame: ui.draw_countdown(frame, "GO!", progress=2.0),
             lambda frame: ui.draw_help_overlay(frame),
             lambda frame: ui.draw_debug_overlay(frame, {"hands": 1, "landmarks": 21}),
@@ -207,11 +219,21 @@ class UserInterfaceTests(unittest.TestCase):
                 {
                     "hands": 2,
                     "confidence": (0.8, 1.0),
+                    "capture_ms": "2.1",
+                    "inference_ms": "8.4",
+                    "update_ms": "1.2",
+                    "render_ms": "4.0",
+                    "frame_ms": "16.1",
                     "gesture": "NO DIRECTIONAL STRIKE",
                 },
             )
         debug_labels = [call.args[1] for call in debug_text.call_args_list]
         self.assertIn("Mean hand-class confidence  90%", debug_labels)
+        self.assertIn("Camera capture  2.1 ms", debug_labels)
+        self.assertIn("Inference  8.4 ms", debug_labels)
+        self.assertIn("Game update  1.2 ms", debug_labels)
+        self.assertIn("Rendering  4.0 ms", debug_labels)
+        self.assertIn("Frame pipeline  16.1 ms", debug_labels)
         self.assertIn("Motion rule  NO DIRECTIONAL STRIKE", debug_labels)
         self.assertIn("OpenCV: camera capture + rendering", debug_labels)
         self.assertIn("App logic: fingertip path collision", debug_labels)

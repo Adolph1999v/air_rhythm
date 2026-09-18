@@ -13,6 +13,7 @@ import mediapipe as mp
 import numpy as np
 
 from audio_engine import AudioEngine
+from performance_benchmark import PerformanceBenchmark, save_benchmark_report
 from music import (
     ALL_PITCHES,
     INSTRUMENTS,
@@ -26,6 +27,7 @@ from privacy import PrivacyMode, PrivacyRenderer
 from performance_stage import (
     create_performance_stage,
     draw_camera_inset,
+    draw_collision_points,
     draw_virtual_drumsticks,
 )
 from rhythm_game import (
@@ -41,6 +43,9 @@ CAMERA_INDEX = 0
 WINDOW_TITLE = "Air Rhythm | Play with your hands"
 MAX_HANDS = 2
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
+BENCHMARK_REPORT_DIRECTORY = (
+    Path(__file__).resolve().parent / "benchmark_reports"
+)
 NODE_SPAWN_INTERVAL_SECONDS = 0.55
 NODE_FALL_SPEED_PER_FRAME_HEIGHT = 0.28
 MAX_ACTIVE_NODES = 6
@@ -107,7 +112,7 @@ PRIVACY_LABELS = {
 
 
 class AppScreen(Enum):
-    """The three presentation states around the live camera pipeline."""
+    """The presentation states around the live camera pipeline."""
 
     TITLE = "TITLE"
     GAMEPLAY = "GAMEPLAY"
@@ -137,6 +142,17 @@ def handedness_confidences(detection_result) -> tuple[float, ...]:
         if isinstance(score, (int, float)) and math.isfinite(score):
             scores.append(max(0.0, min(1.0, float(score))))
     return tuple(scores)
+
+
+def finish_benchmark_session(
+    benchmark: PerformanceBenchmark,
+) -> tuple[dict, tuple[Path, Path]]:
+    """Stop an active benchmark, save both reports, and announce their paths."""
+    report = benchmark.stop()
+    paths = save_benchmark_report(report, BENCHMARK_REPORT_DIRECTORY)
+    print(f"Benchmark JSON saved to: {paths[0]}")
+    print(f"Benchmark Markdown saved to: {paths[1]}")
+    return report, paths
 
 
 @dataclass
@@ -174,6 +190,7 @@ class NodeHit:
     rating: str
     timing_grade: TimingGrade | None = None
     timing_error: float | None = None
+    in_order: bool | None = None
 
 
 @dataclass
@@ -605,6 +622,7 @@ def update_challenge_nodes(
                 (rate_fingertip_motion(motion) for motion in touching_motions),
                 key=rating_priority.get,
             )
+            in_order = rhythm_round.timing_bonus_available(node.chart_index)
             judged_grade = rhythm_round.judge_hit(
                 node.chart_index,
                 current_time,
@@ -616,6 +634,7 @@ def update_challenge_nodes(
                     rating=movement_rating,
                     timing_grade=judged_grade,
                     timing_error=timing_error,
+                    in_order=in_order,
                 )
             )
         elif node.y - node.radius > frame_height:
@@ -669,8 +688,14 @@ def draw_falling_nodes(
     active_nodes: list[FallingNode],
     current_time: float | None = None,
 ) -> None:
-    """Draw the clean falling circles used as the playable music targets."""
+    """Draw ordered music targets and make the next chart note brighter."""
     transparent_overlay = frame.copy()
+    chart_indices = [
+        node.chart_index
+        for node in active_nodes
+        if node.chart_index is not None
+    ]
+    next_chart_index = min(chart_indices) if chart_indices else None
 
     for node in active_nodes:
         center = (round(node.x), round(node.y))
@@ -687,13 +712,51 @@ def draw_falling_nodes(
 
     for node in active_nodes:
         center = (round(node.x), round(node.y))
-        cv2.circle(frame, center, node.radius, node.color, 4, cv2.LINE_AA)
-        label = (
+        is_next = (
+            next_chart_index is not None
+            and node.chart_index == next_chart_index
+        )
+        border_color = node.color
+        border_thickness = 4
+        if is_next:
+            # Brighten the existing target itself.  There is deliberately no
+            # extra timing ring or fixed target marker.
+            highlight_overlay = frame.copy()
+            brighter_color = tuple(
+                min(255, round(channel * 0.62 + 255 * 0.38))
+                for channel in node.color
+            )
+            cv2.circle(
+                highlight_overlay,
+                center,
+                node.radius,
+                brighter_color,
+                -1,
+                cv2.LINE_AA,
+            )
+            cv2.addWeighted(highlight_overlay, 0.24, frame, 0.76, 0, frame)
+            border_color = brighter_color
+            border_thickness = 6
+
+        cv2.circle(
+            frame,
+            center,
+            node.radius,
+            border_color,
+            border_thickness,
+            cv2.LINE_AA,
+        )
+        note_label = (
             note_name(node.midi_note)
             if node.midi_note is not None
             else INSTRUMENT_BY_KEY[node.instrument].label
         )
-        label_scale = min(0.48, node.radius / 90)
+        label = (
+            f"{node.chart_index + 1:02d} / {note_label}"
+            if node.chart_index is not None
+            else note_label
+        )
+        label_scale = min(0.48, node.radius / max(90, len(label) * 15))
         (text_width, text_height), _ = cv2.getTextSize(
             label, cv2.FONT_HERSHEY_SIMPLEX, label_scale, 1
         )
@@ -882,6 +945,7 @@ def main() -> None:
 
     configure_display_window()
     audio = AudioEngine(ALL_PITCHES)
+    benchmark = PerformanceBenchmark()
     try:
         if not audio.start():
             print(audio.error_message or "Sound unavailable.")
@@ -906,9 +970,18 @@ def main() -> None:
             show_debug = False
             smoothed_fps: float | None = None
             stage_template: np.ndarray | None = None
+            last_render_ms = 0.0
+            last_complete_frame_ms = 0.0
+            benchmark_notice: str | None = None
+            benchmark_notice_until = 0.0
 
             while True:
+                frame_pipeline_started_at = time.perf_counter()
+                capture_started_at = time.perf_counter()
                 frame_read_successfully, frame = camera.read()
+                camera_capture_ms = (
+                    time.perf_counter() - capture_started_at
+                ) * 1000
 
                 if not frame_read_successfully:
                     print("Could not read a camera frame. Closing Air Rhythm.")
@@ -932,6 +1005,7 @@ def main() -> None:
                     timestamp_ms,
                 )
                 inference_ms = (time.perf_counter() - inference_started_at) * 1000
+                game_update_started_at = time.perf_counter()
 
                 camera_height, camera_width = mirrored_frame.shape[:2]
                 stage_width, stage_height = stage_dimensions_for_camera(
@@ -1040,6 +1114,9 @@ def main() -> None:
                         melody,
                         game_mode == GAME_MODE_CHALLENGE,
                     )
+                    benchmark.record_audio_request(
+                        (time.perf_counter() - frame_pipeline_started_at) * 1000
+                    )
                 if not audio.enabled and audio.error_message != reported_audio_error:
                     print(audio.error_message)
                     print("Check your sound output and restart Air Rhythm to reconnect.")
@@ -1055,13 +1132,18 @@ def main() -> None:
                         effect_detail = None
                     else:
                         effect_rating = node_hit.timing_grade.label
-                        timing_milliseconds = round(abs(node_hit.timing_error or 0.0) * 1000)
-                        if timing_milliseconds <= 15:
-                            timing_description = "ON BEAT"
-                        elif (node_hit.timing_error or 0.0) < 0:
-                            timing_description = f"{timing_milliseconds} ms EARLY"
+                        if node_hit.in_order is False:
+                            timing_description = "OUT OF ORDER"
                         else:
-                            timing_description = f"{timing_milliseconds} ms LATE"
+                            timing_milliseconds = round(
+                                abs(node_hit.timing_error or 0.0) * 1000
+                            )
+                            if timing_milliseconds <= 15:
+                                timing_description = "ON BEAT"
+                            elif (node_hit.timing_error or 0.0) < 0:
+                                timing_description = f"{timing_milliseconds} ms EARLY"
+                            else:
+                                timing_description = f"{timing_milliseconds} ms LATE"
                         motion_description = {
                             "GOOD": "TOUCH",
                             "GREAT": "STRONG",
@@ -1086,6 +1168,9 @@ def main() -> None:
                     for effect in hit_effects
                     if current_time - effect.started_at < HIT_EFFECT_DURATION_SECONDS
                 ]
+                game_update_ms = (
+                    time.perf_counter() - game_update_started_at
+                ) * 1000
 
                 hand_count = len(detection_result.hand_landmarks)
                 if hand_count == 0:
@@ -1102,7 +1187,11 @@ def main() -> None:
                         for hand_landmarks in detection_result.hand_landmarks
                     ),
                     "confidence": handedness_confidences(detection_result),
+                    "capture_ms": f"{camera_capture_ms:.1f}",
                     "inference_ms": f"{inference_ms:.1f}",
+                    "update_ms": f"{game_update_ms:.1f}",
+                    "render_ms": f"{last_render_ms:.1f}",
+                    "frame_ms": f"{last_complete_frame_ms:.1f}",
                     "gesture": motion_status,
                 }
                 privacy_label = PRIVACY_LABELS[privacy_renderer.mode]
@@ -1111,6 +1200,7 @@ def main() -> None:
                 # The only place where camera pixels are shown is the compact
                 # live-input inset.  The main display below is generated from
                 # scratch, so the performer remains off the music stage.
+                render_started_at = time.perf_counter()
                 input_preview = privacy_renderer.apply(
                     mirrored_frame,
                     detection_result.hand_landmarks,
@@ -1147,6 +1237,10 @@ def main() -> None:
                 # Landmark 8 anchors each visible drumstick tip, while the
                 # real hand and full skeleton remain visible in the inset.
                 draw_virtual_drumsticks(
+                    display_frame,
+                    detection_result.hand_landmarks,
+                )
+                draw_collision_points(
                     display_frame,
                     detection_result.hand_landmarks,
                 )
@@ -1240,7 +1334,31 @@ def main() -> None:
                 if show_help:
                     ui.draw_help_overlay(display_frame)
 
+                benchmark_clock = time.perf_counter()
+                if benchmark_notice_until <= benchmark_clock:
+                    benchmark_notice = None
+                if benchmark.active or benchmark_notice:
+                    ui.draw_benchmark_status(
+                        display_frame,
+                        benchmark.live_summary(benchmark_clock),
+                        notice=benchmark_notice,
+                    )
+
                 cv2.imshow(WINDOW_TITLE, display_frame)
+                last_render_ms = (
+                    time.perf_counter() - render_started_at
+                ) * 1000
+                last_complete_frame_ms = (
+                    time.perf_counter() - frame_pipeline_started_at
+                ) * 1000
+                benchmark.record_frame(
+                    camera_capture_ms=camera_capture_ms,
+                    mediapipe_inference_ms=inference_ms,
+                    game_update_ms=game_update_ms,
+                    rendering_ms=last_render_ms,
+                    complete_frame_ms=last_complete_frame_ms,
+                    frame_interval_ms=raw_frame_seconds * 1000,
+                )
 
                 pressed_key = cv2.waitKey(1) & 0xFF
                 if pressed_key == ord("q"):
@@ -1275,6 +1393,30 @@ def main() -> None:
                         audio.stop_all()
                 elif pressed_key == ord("d"):
                     show_debug = not show_debug
+                elif pressed_key == ord("b"):
+                    if benchmark.active:
+                        try:
+                            finish_benchmark_session(benchmark)
+                            benchmark_notice = "BENCHMARK SAVED"
+                        except OSError as error:
+                            print(f"Could not save benchmark report: {error}")
+                            benchmark_notice = "BENCHMARK SAVE FAILED"
+                        benchmark_notice_until = time.perf_counter() + 3.0
+                    else:
+                        benchmark.start(
+                            metadata={
+                                "camera_resolution": f"{camera_width}x{camera_height}",
+                                "stage_resolution": f"{stage_width}x{stage_height}",
+                                "screen": screen.value,
+                                "game_mode": game_mode,
+                                "input_view": privacy_label,
+                                "sound_status": sound_label,
+                                "maximum_hands": MAX_HANDS,
+                                "hand_model": "MediaPipe Hand Landmarker",
+                            }
+                        )
+                        benchmark_notice = "BENCHMARK RECORDING"
+                        benchmark_notice_until = 0.0
                 elif pressed_key in (ord("t"), 27):
                     screen = AppScreen.TITLE
                     game_mode = GAME_MODE_CHALLENGE
@@ -1319,6 +1461,11 @@ def main() -> None:
                             current_time - NODE_SPAWN_INTERVAL_SECONDS
                         )
     finally:
+        if benchmark.active:
+            try:
+                finish_benchmark_session(benchmark)
+            except OSError as error:
+                print(f"Could not save benchmark report: {error}")
         camera.release()
         audio.close()
         cv2.destroyAllWindows()

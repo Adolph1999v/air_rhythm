@@ -229,7 +229,9 @@ class RhythmRound:
     score: RoundScore = field(init=False)
     _next_spawn_position: int = field(init=False, repr=False)
     _resolved_indices: set[int] = field(init=False, repr=False)
+    _order_penalized_indices: set[int] = field(init=False, repr=False)
     _events_by_index: dict[int, ChartEvent] = field(init=False, repr=False)
+    _chart_position_by_index: dict[int, int] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.started_at):
@@ -259,6 +261,10 @@ class RhythmRound:
             indices.add(event.index)
             previous_offset = event.target_offset
         self._events_by_index = {event.index: event for event in self.chart}
+        self._chart_position_by_index = {
+            event.index: position
+            for position, event in enumerate(self.chart)
+        }
 
     @property
     def song_start_time(self) -> float:
@@ -335,6 +341,28 @@ class RhythmRound:
             self._next_spawn_position += 1
         return tuple(due)
 
+    @property
+    def next_unresolved_index(self) -> int | None:
+        """Return the next chart event that should be played in sequence."""
+        for event in self.chart:
+            if event.index not in self._resolved_indices:
+                return event.index
+        return None
+
+    def timing_bonus_available(self, event_or_index: ChartEvent | int) -> bool:
+        """Return whether this note may earn PERFECT, GREAT, or GOOD.
+
+        Touching a later note first marks every skipped earlier note as
+        out-of-order too.  Those circles remain playable and still award the
+        base hit score, but going back to them cannot restore a perfect run.
+        """
+        event = self._event(event_or_index)
+        return (
+            event.index not in self._resolved_indices
+            and event.index not in self._order_penalized_indices
+            and event.index == self.next_unresolved_index
+        )
+
     def judge_hit(
         self,
         event_or_index: ChartEvent | int,
@@ -343,9 +371,9 @@ class RhythmRound:
     ) -> TimingGrade:
         """Resolve a touched node from its timing and update the round score.
 
-        Every visible touch is a hit. Contacts outside the optional timing-bonus
-        window receive the neutral HIT result, because the interface does not
-        show a fixed timing target that the player is expected to follow.
+        Every visible touch is a hit. Only the next unresolved chart note can
+        earn a timing bonus.  Later notes touched first, and earlier notes they
+        skipped, receive the neutral HIT result while keeping their base score.
         """
         event = self._event(event_or_index)
         if event.index in self._resolved_indices:
@@ -353,10 +381,21 @@ class RhythmRound:
         if not math.isfinite(hit_at):
             raise ValueError("hit_at must be finite")
 
-        grade = (
-            grade_timing(hit_at - self.target_time(event))
-            or TimingGrade.HIT
-        )
+        timing_bonus_available = self.timing_bonus_available(event)
+        if not timing_bonus_available:
+            event_position = self._chart_position_by_index[event.index]
+            self._order_penalized_indices.update(
+                earlier_event.index
+                for earlier_event in self.chart[:event_position]
+                if earlier_event.index not in self._resolved_indices
+            )
+
+        grade = TimingGrade.HIT
+        if timing_bonus_available:
+            grade = (
+                grade_timing(hit_at - self.target_time(event))
+                or TimingGrade.HIT
+            )
         self._resolved_indices.add(event.index)
         self.score.record_hit(grade, movement_rating)
         return grade
@@ -383,3 +422,4 @@ class RhythmRound:
         self.score = RoundScore()
         self._next_spawn_position = 0
         self._resolved_indices = set()
+        self._order_penalized_indices = set()

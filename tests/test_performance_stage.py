@@ -8,6 +8,7 @@ import numpy as np
 from performance_stage import (
     create_performance_stage,
     draw_camera_inset,
+    draw_collision_points,
     draw_virtual_drumsticks,
 )
 
@@ -43,6 +44,20 @@ class PerformanceStageTests(unittest.TestCase):
 
                 self.assertEqual(stage.shape, before.shape)
                 self.assertFalse(np.array_equal(stage, before))
+
+    def test_collision_points_show_every_active_fingertip(self):
+        stage = create_performance_stage(self.camera_frame())
+        before = stage.copy()
+        hand = hand_at(0.45, 0.55)
+
+        result = draw_collision_points(stage, [hand])
+
+        self.assertIs(result, stage)
+        self.assertFalse(np.array_equal(stage, before))
+        for fingertip_index in (4, 8, 12, 16, 20):
+            x = min(int(hand[fingertip_index].x * stage.shape[1]), stage.shape[1] - 1)
+            y = min(int(hand[fingertip_index].y * stage.shape[0]), stage.shape[0] - 1)
+            self.assertFalse(np.array_equal(stage[y, x], before[y, x]))
 
     def test_live_input_inset_is_bottom_right_and_keeps_camera_pixels_local(self):
         stage = create_performance_stage(self.camera_frame())

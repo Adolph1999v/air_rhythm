@@ -44,6 +44,8 @@ Plans are ranked by career and learning value:
 - Show score, combo, timing feedback, song progress, and hand-detection status clearly.
 - Keep the MediaPipe hand skeleton visible in the compact live-input inset during the demonstration.
 - Make the virtual drumsticks visibly follow the tracked hands without pretending they are a 3D reconstruction.
+- Show every active fingertip collision point, with the index point aligned to the virtual drumstick tip.
+- Number challenge notes and subtly brighten the next unhit note so chart order is immediately understandable.
 - Add a debug view for FPS, inference time, detected hands, landmark count, and handedness-classification confidence when available.
 - Keep OpenCV + MediaPipe details available in the optional technical view without making normal play look like a dashboard.
 - Move drawing responsibilities out of the main camera loop where practical.
@@ -65,6 +67,8 @@ Plans are ranked by career and learning value:
 
 ## Milestone 2 — Latency calibration and performance measurement
 
+**Status:** The privacy-safe benchmark recorder and report generator are implemented. Live 60-second measurements, audio-device calibration, comparison, and optimisation are still pending.
+
 ### Work
 
 - Measure camera capture, MediaPipe inference, game update, rendering, and audio-trigger time separately.
@@ -74,6 +78,16 @@ Plans are ranked by career and learning value:
 - Compare speakers, wired headphones, and Bluetooth only when those devices are available.
 - Profile the main loop and optimise the slowest measured stage.
 - Document the test machine, camera resolution, and test settings.
+
+### Implemented foundation
+
+- Press `B` to start or stop a benchmark without interrupting gameplay.
+- Measure camera capture, MediaPipe inference, game update, rendering, complete-frame processing, and frame-start-to-audio-request timing.
+- Report average, median, 95th-percentile, best, and worst values.
+- Track average/minimum FPS, slow frames, and estimated dropped frames against a 30 FPS budget.
+- Save JSON plus readable Markdown containing environment and test settings.
+- Store no camera images and no hand-landmark coordinates.
+- Label audio timing as an approximate software-path measurement rather than physical speaker latency.
 
 ### Definition of Done
 
