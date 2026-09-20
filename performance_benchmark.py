@@ -20,6 +20,8 @@ from typing import Any
 DEFAULT_TARGET_FPS = 30.0
 METRIC_NAMES = (
     "camera_capture_ms",
+    "camera_wait_ms",
+    "camera_preprocessing_ms",
     "mediapipe_inference_ms",
     "game_update_ms",
     "rendering_ms",
@@ -27,7 +29,9 @@ METRIC_NAMES = (
     "frame_start_to_audio_request_ms",
 )
 METRIC_LABELS = {
-    "camera_capture_ms": "Camera capture",
+    "camera_capture_ms": "Camera read (background)",
+    "camera_wait_ms": "Main-loop wait for fresh camera frame",
+    "camera_preprocessing_ms": "Camera preparation",
     "mediapipe_inference_ms": "MediaPipe inference",
     "game_update_ms": "Game update",
     "rendering_ms": "Rendering and display submission",
@@ -96,6 +100,7 @@ class PerformanceBenchmark:
     frame_intervals_ms: list[float] = field(default_factory=list, init=False)
     slow_frame_count: int = field(default=0, init=False)
     estimated_dropped_frames: int = field(default=0, init=False)
+    camera_frames_skipped: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.target_fps = _finite_non_negative(self.target_fps, "target_fps")
@@ -116,6 +121,7 @@ class PerformanceBenchmark:
         self.frame_intervals_ms = []
         self.slow_frame_count = 0
         self.estimated_dropped_frames = 0
+        self.camera_frames_skipped = 0
 
     def start(
         self,
@@ -140,17 +146,22 @@ class PerformanceBenchmark:
         self,
         *,
         camera_capture_ms: float,
+        camera_wait_ms: float,
+        camera_preprocessing_ms: float,
         mediapipe_inference_ms: float,
         game_update_ms: float,
         rendering_ms: float,
         complete_frame_ms: float,
         frame_interval_ms: float,
+        camera_frames_skipped: int = 0,
     ) -> None:
         """Record one complete frame when the session is active."""
         if not self.active:
             return
         samples = {
             "camera_capture_ms": camera_capture_ms,
+            "camera_wait_ms": camera_wait_ms,
+            "camera_preprocessing_ms": camera_preprocessing_ms,
             "mediapipe_inference_ms": mediapipe_inference_ms,
             "game_update_ms": game_update_ms,
             "rendering_ms": rendering_ms,
@@ -161,8 +172,15 @@ class PerformanceBenchmark:
             for name, value in samples.items()
         }
         interval = _finite_non_negative(frame_interval_ms, "frame_interval_ms")
+        if (
+            isinstance(camera_frames_skipped, bool)
+            or not isinstance(camera_frames_skipped, int)
+            or camera_frames_skipped < 0
+        ):
+            raise ValueError("camera_frames_skipped must be a non-negative integer")
         for name, value in validated_samples.items():
             self.metrics[name].append(value)
+        self.camera_frames_skipped += camera_frames_skipped
         if interval > 0:
             self.frame_intervals_ms.append(interval)
             if interval > self.frame_budget_ms:
@@ -207,6 +225,7 @@ class PerformanceBenchmark:
             "average_fps": average_fps,
             "slow_frames": self.slow_frame_count,
             "estimated_dropped_frames": self.estimated_dropped_frames,
+            "camera_frames_skipped": self.camera_frames_skipped,
             "audio_samples": len(self.metrics["frame_start_to_audio_request_ms"]),
         }
 
@@ -244,7 +263,7 @@ class PerformanceBenchmark:
             "python": platform.python_version(),
         }
         return {
-            "schema_version": 1,
+            "schema_version": 3,
             "started_at_utc": self.started_at_utc,
             "duration_seconds": duration_seconds,
             "target_fps": self.target_fps,
@@ -253,6 +272,7 @@ class PerformanceBenchmark:
             "slow_frame_count": self.slow_frame_count,
             "slow_frame_percent": slow_percent,
             "estimated_dropped_frames": self.estimated_dropped_frames,
+            "camera_frames_skipped": self.camera_frames_skipped,
             "fps": fps_summary,
             "timings_ms": timing_summaries,
             "environment": environment,
@@ -264,6 +284,7 @@ class PerformanceBenchmark:
             "limitations": [
                 "Frame start to audio request is software-path timing, not measured speaker output latency.",
                 "Estimated dropped frames are inferred from frame intervals against the target frame budget.",
+                "Background camera-read time overlaps main-loop work and must not be added to the complete pipeline time.",
             ],
         }
 
@@ -289,6 +310,7 @@ def benchmark_markdown(report: dict[str, Any]) -> str:
         f"- Slow frames: {int(report.get('slow_frame_count', 0))} "
         f"({_format_number(report.get('slow_frame_percent'))}%)",
         f"- Estimated dropped frames: {int(report.get('estimated_dropped_frames', 0))}",
+        f"- Camera frames skipped for freshness: {int(report.get('camera_frames_skipped', 0))}",
         "",
         "## Pipeline timings",
         "",

@@ -13,6 +13,7 @@ import mediapipe as mp
 import numpy as np
 
 from audio_engine import AudioEngine
+from camera_capture import LatestFrameCamera
 from performance_benchmark import PerformanceBenchmark, save_benchmark_report
 from music import (
     ALL_PITCHES,
@@ -40,6 +41,11 @@ import ui
 
 
 CAMERA_INDEX = 0
+CAMERA_REQUEST_WIDTH = 1280
+CAMERA_REQUEST_HEIGHT = 720
+CAMERA_REQUEST_FPS = 30.0
+CAMERA_PROCESSING_MAX_WIDTH = 1280
+CAMERA_PROCESSING_MAX_HEIGHT = 720
 WINDOW_TITLE = "Air Rhythm | Play with your hands"
 MAX_HANDS = 2
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
@@ -153,6 +159,94 @@ def finish_benchmark_session(
     print(f"Benchmark JSON saved to: {paths[0]}")
     print(f"Benchmark Markdown saved to: {paths[1]}")
     return report, paths
+
+
+def configure_camera_capture(camera) -> dict[str, float | None]:
+    """Request a responsive camera mode and report what the backend accepted.
+
+    Camera drivers may ignore OpenCV property requests, so the returned values
+    are observations rather than promises. The frame is also size-limited
+    later in the pipeline to guarantee bounded computer-vision work.
+    """
+    requests = (
+        (cv2.CAP_PROP_FRAME_WIDTH, float(CAMERA_REQUEST_WIDTH)),
+        (cv2.CAP_PROP_FRAME_HEIGHT, float(CAMERA_REQUEST_HEIGHT)),
+        (cv2.CAP_PROP_FPS, CAMERA_REQUEST_FPS),
+    )
+    for property_id, requested_value in requests:
+        try:
+            camera.set(property_id, requested_value)
+        except (AttributeError, cv2.error):
+            pass
+
+    buffer_property = getattr(cv2, "CAP_PROP_BUFFERSIZE", None)
+    if buffer_property is not None:
+        try:
+            camera.set(buffer_property, 1)
+        except (AttributeError, cv2.error):
+            pass
+
+    def reported_value(property_id: int) -> float | None:
+        try:
+            value = float(camera.get(property_id))
+        except (AttributeError, TypeError, ValueError, cv2.error):
+            return None
+        if not math.isfinite(value) or value <= 0:
+            return None
+        return value
+
+    configuration = {
+        "width": reported_value(cv2.CAP_PROP_FRAME_WIDTH),
+        "height": reported_value(cv2.CAP_PROP_FRAME_HEIGHT),
+        "fps": reported_value(cv2.CAP_PROP_FPS),
+    }
+    reported_width = configuration["width"]
+    reported_height = configuration["height"]
+    reported_fps = configuration["fps"]
+    reported_resolution = (
+        f"{int(round(reported_width))}x{int(round(reported_height))}"
+        if reported_width is not None and reported_height is not None
+        else "unavailable"
+    )
+    fps_label = f"{reported_fps:.2f}" if reported_fps is not None else "unavailable"
+    print(
+        "Camera request: "
+        f"{CAMERA_REQUEST_WIDTH}x{CAMERA_REQUEST_HEIGHT} at "
+        f"{CAMERA_REQUEST_FPS:.0f} FPS; backend reports "
+        f"{reported_resolution} at {fps_label} FPS."
+    )
+    return configuration
+
+
+def resize_frame_for_processing(
+    frame: np.ndarray,
+    max_width: int = CAMERA_PROCESSING_MAX_WIDTH,
+    max_height: int = CAMERA_PROCESSING_MAX_HEIGHT,
+) -> np.ndarray:
+    """Downscale a camera frame for CV work without changing its aspect ratio."""
+    if not isinstance(frame, np.ndarray) or frame.ndim < 2:
+        raise ValueError("camera frame must be an image array")
+    frame_height, frame_width = frame.shape[:2]
+    if frame_width <= 0 or frame_height <= 0:
+        raise ValueError("camera frame must have positive dimensions")
+    if max_width <= 0 or max_height <= 0:
+        raise ValueError("processing limits must be positive")
+
+    resize_scale = min(
+        1.0,
+        max_width / frame_width,
+        max_height / frame_height,
+    )
+    if resize_scale >= 1.0:
+        return frame
+
+    resized_width = max(1, int(round(frame_width * resize_scale)))
+    resized_height = max(1, int(round(frame_height * resize_scale)))
+    return cv2.resize(
+        frame,
+        (resized_width, resized_height),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
 @dataclass
@@ -943,10 +1037,13 @@ def main() -> None:
             "your terminal or editor has Camera permission in macOS Settings."
         )
 
+    camera_configuration = configure_camera_capture(camera)
     configure_display_window()
     audio = AudioEngine(ALL_PITCHES)
     benchmark = PerformanceBenchmark()
+    camera_stream = LatestFrameCamera(camera)
     try:
+        camera_stream.start()
         if not audio.start():
             print(audio.error_message or "Sound unavailable.")
             print("Air Rhythm will keep running. Check your sound output and restart.")
@@ -974,25 +1071,38 @@ def main() -> None:
             last_complete_frame_ms = 0.0
             benchmark_notice: str | None = None
             benchmark_notice_until = 0.0
+            last_camera_sequence = 0
 
             while True:
                 frame_pipeline_started_at = time.perf_counter()
-                capture_started_at = time.perf_counter()
-                frame_read_successfully, frame = camera.read()
-                camera_capture_ms = (
-                    time.perf_counter() - capture_started_at
-                ) * 1000
-
-                if not frame_read_successfully:
-                    print("Could not read a camera frame. Closing Air Rhythm.")
+                captured_frame = camera_stream.read_latest(
+                    after_sequence=last_camera_sequence,
+                    timeout=1.0,
+                )
+                if captured_frame is None:
+                    if camera_stream.failed:
+                        print("The camera stopped returning frames. Closing Air Rhythm.")
+                    else:
+                        print("Timed out waiting for a camera frame. Closing Air Rhythm.")
                     break
+                last_camera_sequence = captured_frame.sequence
+                frame = captured_frame.image
+                camera_capture_ms = captured_frame.camera_read_ms
+                camera_wait_ms = captured_frame.main_thread_wait_ms
+                camera_frames_skipped = captured_frame.skipped_since_previous
 
-                mirrored_frame = cv2.flip(frame, 1)
+                captured_height, captured_width = frame.shape[:2]
+                preprocessing_started_at = time.perf_counter()
+                processing_frame = resize_frame_for_processing(frame)
+                mirrored_frame = cv2.flip(processing_frame, 1)
                 rgb_frame = cv2.cvtColor(mirrored_frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(
                     image_format=mp.ImageFormat.SRGB,
                     data=rgb_frame,
                 )
+                camera_preprocessing_ms = (
+                    time.perf_counter() - preprocessing_started_at
+                ) * 1000
 
                 timestamp_ms = max(
                     int(time.monotonic() * 1000),
@@ -1188,6 +1298,8 @@ def main() -> None:
                     ),
                     "confidence": handedness_confidences(detection_result),
                     "capture_ms": f"{camera_capture_ms:.1f}",
+                    "camera_wait_ms": f"{camera_wait_ms:.1f}",
+                    "preprocessing_ms": f"{camera_preprocessing_ms:.1f}",
                     "inference_ms": f"{inference_ms:.1f}",
                     "update_ms": f"{game_update_ms:.1f}",
                     "render_ms": f"{last_render_ms:.1f}",
@@ -1353,11 +1465,14 @@ def main() -> None:
                 ) * 1000
                 benchmark.record_frame(
                     camera_capture_ms=camera_capture_ms,
+                    camera_wait_ms=camera_wait_ms,
+                    camera_preprocessing_ms=camera_preprocessing_ms,
                     mediapipe_inference_ms=inference_ms,
                     game_update_ms=game_update_ms,
                     rendering_ms=last_render_ms,
                     complete_frame_ms=last_complete_frame_ms,
                     frame_interval_ms=raw_frame_seconds * 1000,
+                    camera_frames_skipped=camera_frames_skipped,
                 )
 
                 pressed_key = cv2.waitKey(1) & 0xFF
@@ -1405,7 +1520,29 @@ def main() -> None:
                     else:
                         benchmark.start(
                             metadata={
-                                "camera_resolution": f"{camera_width}x{camera_height}",
+                                "requested_camera_resolution": (
+                                    f"{CAMERA_REQUEST_WIDTH}x{CAMERA_REQUEST_HEIGHT}"
+                                ),
+                                "requested_camera_fps": CAMERA_REQUEST_FPS,
+                                "reported_camera_resolution": (
+                                    f"{int(round(camera_configuration['width']))}x"
+                                    f"{int(round(camera_configuration['height']))}"
+                                    if camera_configuration["width"] is not None
+                                    and camera_configuration["height"] is not None
+                                    else "Unavailable"
+                                ),
+                                "reported_camera_fps": (
+                                    camera_configuration["fps"]
+                                    if camera_configuration["fps"] is not None
+                                    else "Unavailable"
+                                ),
+                                "camera_capture_mode": "Background latest-frame",
+                                "captured_camera_resolution": (
+                                    f"{captured_width}x{captured_height}"
+                                ),
+                                "processing_resolution": (
+                                    f"{camera_width}x{camera_height}"
+                                ),
                                 "stage_resolution": f"{stage_width}x{stage_height}",
                                 "screen": screen.value,
                                 "game_mode": game_mode,
@@ -1466,7 +1603,7 @@ def main() -> None:
                 finish_benchmark_session(benchmark)
             except OSError as error:
                 print(f"Could not save benchmark report: {error}")
-        camera.release()
+        camera_stream.close()
         audio.close()
         cv2.destroyAllWindows()
 

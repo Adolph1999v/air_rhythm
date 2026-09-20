@@ -34,11 +34,14 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         for interval in (20.0, 40.0, 70.0):
             benchmark.record_frame(
                 camera_capture_ms=2.0,
+                camera_wait_ms=0.4,
+                camera_preprocessing_ms=1.0,
                 mediapipe_inference_ms=8.0,
                 game_update_ms=1.5,
                 rendering_ms=5.0,
                 complete_frame_ms=16.5,
                 frame_interval_ms=interval,
+                camera_frames_skipped=1 if interval == 70.0 else 0,
             )
         benchmark.record_audio_request(12.5)
 
@@ -46,6 +49,7 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         self.assertEqual(live["frames"], 3)
         self.assertEqual(live["slow_frames"], 2)
         self.assertEqual(live["estimated_dropped_frames"], 1)
+        self.assertEqual(live["camera_frames_skipped"], 1)
         self.assertEqual(live["audio_samples"], 1)
 
         report = benchmark.stop(now=12.0)
@@ -54,9 +58,18 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["frame_count"], 3)
         self.assertEqual(report["slow_frame_count"], 2)
         self.assertEqual(report["estimated_dropped_frames"], 1)
+        self.assertEqual(report["camera_frames_skipped"], 1)
         self.assertEqual(
             report["timings_ms"]["camera_capture_ms"]["average"],
             2.0,
+        )
+        self.assertAlmostEqual(
+            report["timings_ms"]["camera_wait_ms"]["average"],
+            0.4,
+        )
+        self.assertEqual(
+            report["timings_ms"]["camera_preprocessing_ms"]["average"],
+            1.0,
         )
         self.assertEqual(
             report["timings_ms"]["frame_start_to_audio_request_ms"]["samples"],
@@ -76,6 +89,8 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             benchmark.record_frame(
                 camera_capture_ms=-1.0,
+                camera_wait_ms=1.0,
+                camera_preprocessing_ms=1.0,
                 mediapipe_inference_ms=1.0,
                 game_update_ms=1.0,
                 rendering_ms=1.0,
@@ -88,6 +103,8 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         benchmark.start(now=1.0, started_at_utc="2026-09-19T10:00:00+00:00")
         benchmark.record_frame(
             camera_capture_ms=2.0,
+            camera_wait_ms=0.5,
+            camera_preprocessing_ms=1.0,
             mediapipe_inference_ms=7.0,
             game_update_ms=1.0,
             rendering_ms=4.0,
@@ -98,6 +115,8 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         markdown = benchmark_markdown(report)
         self.assertIn("Average FPS", markdown)
         self.assertIn("MediaPipe inference", markdown)
+        self.assertIn("Main-loop wait for fresh camera frame", markdown)
+        self.assertIn("Camera preparation", markdown)
         self.assertIn("No camera images are stored", markdown)
 
         with tempfile.TemporaryDirectory() as directory:

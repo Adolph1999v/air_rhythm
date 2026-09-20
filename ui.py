@@ -1104,7 +1104,11 @@ def draw_debug_overlay(
     if confidence is not None:
         lines.append((f"Mean hand-class confidence  {confidence}", GREEN))
     if info.get("capture_ms") is not None:
-        lines.append((f"Camera capture  {info['capture_ms']} ms", WHITE))
+        lines.append((f"Background camera read  {info['capture_ms']} ms", WHITE))
+    if info.get("camera_wait_ms") is not None:
+        lines.append((f"Main-loop camera wait  {info['camera_wait_ms']} ms", WHITE))
+    if info.get("preprocessing_ms") is not None:
+        lines.append((f"Camera preparation  {info['preprocessing_ms']} ms", WHITE))
     if info.get("inference_ms") is not None:
         lines.append((f"Inference  {info['inference_ms']} ms", WHITE))
     if info.get("update_ms") is not None:

@@ -220,6 +220,8 @@ class UserInterfaceTests(unittest.TestCase):
                     "hands": 2,
                     "confidence": (0.8, 1.0),
                     "capture_ms": "2.1",
+                    "camera_wait_ms": "0.4",
+                    "preprocessing_ms": "1.3",
                     "inference_ms": "8.4",
                     "update_ms": "1.2",
                     "render_ms": "4.0",
@@ -229,7 +231,9 @@ class UserInterfaceTests(unittest.TestCase):
             )
         debug_labels = [call.args[1] for call in debug_text.call_args_list]
         self.assertIn("Mean hand-class confidence  90%", debug_labels)
-        self.assertIn("Camera capture  2.1 ms", debug_labels)
+        self.assertIn("Background camera read  2.1 ms", debug_labels)
+        self.assertIn("Main-loop camera wait  0.4 ms", debug_labels)
+        self.assertIn("Camera preparation  1.3 ms", debug_labels)
         self.assertIn("Inference  8.4 ms", debug_labels)
         self.assertIn("Game update  1.2 ms", debug_labels)
         self.assertIn("Rendering  4.0 ms", debug_labels)

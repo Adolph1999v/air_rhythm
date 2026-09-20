@@ -67,11 +67,12 @@ Plans are ranked by career and learning value:
 
 ## Milestone 2 — Latency calibration and performance measurement
 
-**Status:** The privacy-safe benchmark recorder and report generator are implemented. Live 60-second measurements, audio-device calibration, comparison, and optimisation are still pending.
+**Status:** The privacy-safe benchmark recorder, initial comparison runs, and background latest-frame capture are implemented. Validation of the new capture architecture and audio-device calibration are still pending.
 
 ### Work
 
 - Measure camera capture, MediaPipe inference, game update, rendering, and audio-trigger time separately.
+- Measure camera preparation separately so resizing and colour conversion are visible rather than hidden inside the frame total.
 - Add a rolling FPS and frame-time measurement.
 - Record average, median, 95th-percentile, and worst frame times.
 - Create a simple audio-delay calibration flow for the local computer.
@@ -88,6 +89,23 @@ Plans are ranked by career and learning value:
 - Save JSON plus readable Markdown containing environment and test settings.
 - Store no camera images and no hand-landmark coordinates.
 - Label audio timing as an approximate software-path measurement rather than physical speaker latency.
+- Request 1280×720 at 30 FPS and defensively downscale larger camera frames before landmark inference.
+- Record requested, reported, captured, processing, and stage resolutions so benchmark comparisons remain honest.
+- Read camera frames on a background worker so device waiting can overlap MediaPipe inference and rendering.
+- Track the main-loop wait for fresh input and source frames intentionally skipped to avoid stale latency.
+
+### Current comparison target
+
+- Baseline: 15.03 average FPS from a 77.20-second run with 1920×1080 captured frames and a 1920×1200 generated stage.
+- First optimisation: two 1280×720 runs measured 16.04 and 16.59 average FPS; rendering improved, but serial camera waiting still dominated the loop.
+- Next run: play for at least 60 seconds with background latest-frame capture and compare every timing row with both earlier architectures.
+- If the measured frame rate becomes stable but the drumsticks still jitter, add an adaptive landmark filter that reacts quickly during deliberate movement.
+
+### Evidence lifecycle
+
+- Keep raw JSON and Markdown measurements temporarily in the repository-local, ignored `benchmark_reports/` directory.
+- Consolidate the methodology, bottlenecks, architecture changes, before/after table, and conclusions into `docs/PERFORMANCE_STUDY.md`.
+- Delete raw benchmark files after the consolidated study contains every result needed for the portfolio.
 
 ### Definition of Done
 
