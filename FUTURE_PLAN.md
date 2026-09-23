@@ -67,7 +67,7 @@ Plans are ranked by career and learning value:
 
 ## Milestone 2 — Latency calibration and performance measurement
 
-**Status:** The privacy-safe benchmark recorder, initial comparison runs, and background latest-frame capture are implemented. Validation of the new capture architecture and audio-device calibration are still pending.
+**Status:** The privacy-safe benchmark recorder and background latest-frame capture are implemented and validated in a 64.67-second live run. Audio-device calibration is still pending.
 
 ### Work
 
