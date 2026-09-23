@@ -13,10 +13,10 @@ import cv2
 
 
 # OpenCV colours use blue, green, red (BGR) order.
-INK = (10, 12, 22)
+INK = (0, 0, 0)
 TEXT_SHADOW = (20, 23, 34)
-PANEL = (24, 27, 42)
-PANEL_LIGHT = (48, 55, 76)
+PANEL = (20, 20, 20)
+PANEL_LIGHT = (52, 52, 52)
 WHITE = (244, 248, 255)
 MUTED = (176, 187, 211)
 CYAN = (255, 222, 67)
@@ -330,15 +330,10 @@ def draw_brand_badge(
 
 
 def _draw_background_tint(frame, opacity: float = 0.62) -> None:
-    """Dim a camera frame while keeping a subtle cyan and purple stage glow."""
+    """Dim the stage with a neutral black overlay."""
     width, height = _frame_size(frame)
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (width - 1, height - 1), INK, -1)
-    cv2.circle(overlay, (0, height // 2), max(width, height) // 2, (50, 29, 64), -1)
-    cv2.circle(
-        overlay, (width - 1, height // 3), max(width, height) // 3,
-        (68, 48, 22), -1,
-    )
     cv2.addWeighted(overlay, _clamp01(opacity), frame, 1.0 - _clamp01(opacity), 0, frame)
 
 
@@ -434,6 +429,31 @@ def draw_title_screen(
         min_scale=0.16,
     )
 
+    instruction_y = detail_y + max(23, int(37 * scale))
+    draw_text(
+        frame,
+        "BRING BOTH HANDS INTO CAMERA VIEW",
+        (center_x, instruction_y),
+        max(0.43, 0.61 * scale),
+        WHITE,
+        1,
+        align="center",
+        max_width=max(40, int(width * 0.76)),
+        min_scale=0.17,
+    )
+    aim_y = instruction_y + max(18, int(31 * scale))
+    draw_text(
+        frame,
+        "HIT FALLING CIRCLES WITH YOUR INDEX FINGERTIPS",
+        (center_x, aim_y),
+        max(0.40, 0.55 * scale),
+        MUTED,
+        1,
+        align="center",
+        max_width=max(40, int(width * 0.76)),
+        min_scale=0.16,
+    )
+
     progress = None if ready_progress is None else _clamp01(ready_progress)
     ready = progress is None or progress >= 1.0
     action = "SPACE  START CHALLENGE" if ready else "PREPARING LANDMARK INPUT"
@@ -442,7 +462,7 @@ def draw_title_screen(
     action_height = max(28, int(54 * scale))
     action_top = min(
         height - action_height - margin,
-        detail_y + max(18, int(38 * scale)),
+        aim_y + max(20, int(35 * scale)),
     )
     action_left = max(margin, center_x - action_width // 2)
     action_right = min(width - margin, action_left + action_width)
@@ -979,7 +999,7 @@ def draw_help_overlay(
     )
     guide_y = heading_y + max(18, int(32 * scale))
     draw_text(
-        frame, "Move a fingertip through a falling circle to play its note.",
+        frame, "Show both hands; hit falling circles with your index fingertips.",
         (center_x, guide_y), max(0.29, 0.48 * scale), WHITE, 1,
         align="center", max_width=available, min_scale=0.18,
     )

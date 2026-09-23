@@ -2,6 +2,8 @@
 
 Air Rhythm has a short timed challenge and a free-play mode. The main performance stage shows falling circles and virtual drumsticks. A smaller **LIVE INPUT** inset shows the real camera and the tracked hand skeleton.
 
+To get started, bring both hands into camera view and hit the falling circles with your index fingertips. The index fingertip aligns with each virtual drumstick's tip; one hand or another fingertip can still play.
+
 ## Challenge mode
 
 Press `Space` on the title screen. A three-second countdown runs; the first circle enters from the top when it reaches `GO`. That circle takes two seconds to reach its beat in the upper third of the stage. Later circles carry the scheduled notes of a simplified melody.

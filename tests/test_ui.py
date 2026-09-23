@@ -211,6 +211,20 @@ class UserInterfaceTests(unittest.TestCase):
             "MediaPipe pretrained landmarks + custom gesture / collision logic",
             title_labels,
         )
+        self.assertIn("BRING BOTH HANDS INTO CAMERA VIEW", title_labels)
+        self.assertIn(
+            "HIT FALLING CIRCLES WITH YOUR INDEX FINGERTIPS",
+            title_labels,
+        )
+
+        guide_frame = self.frame(1280, 720)
+        with patch("ui.draw_text", wraps=ui.draw_text) as guide_text:
+            ui.draw_help_overlay(guide_frame)
+        guide_labels = [call.args[1] for call in guide_text.call_args_list]
+        self.assertIn(
+            "Show both hands; hit falling circles with your index fingertips.",
+            guide_labels,
+        )
 
         debug_frame = self.frame(1280, 720)
         with patch("ui.draw_text", wraps=ui.draw_text) as debug_text:

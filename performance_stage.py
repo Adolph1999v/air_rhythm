@@ -20,9 +20,9 @@ MAX_CACHED_BACKGROUNDS = 3
 
 # OpenCV uses BGR.  The materials are deliberately quieter than the playable
 # circles, so a target remains the most obvious object to reach for.
-STAGE_INK = (14, 13, 25)
-STAGE_PANEL = (25, 25, 42)
-STAGE_BORDER = (98, 105, 137)
+STAGE_INK = (0, 0, 0)
+STAGE_PANEL = (20, 20, 20)
+STAGE_BORDER = (92, 92, 92)
 STICK_WOOD = (88, 154, 224)
 STICK_HIGHLIGHT = (194, 226, 249)
 STICK_SHADOW = (10, 13, 20)
@@ -77,57 +77,20 @@ def _filled_round_rect(
 
 
 def _create_background(height: int, width: int) -> np.ndarray:
-    """Build one restrained, non-camera backdrop for a stage resolution."""
-    vertical = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
-    horizontal = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
-    background = np.empty((height, width, 3), dtype=np.uint8)
-    background[:, :, 0] = np.clip(
-        22 + vertical * 19 + (1.0 - horizontal) * 9,
-        0,
-        255,
-    ).astype(np.uint8)
-    background[:, :, 1] = np.clip(15 + vertical * 11, 0, 255).astype(np.uint8)
-    background[:, :, 2] = np.clip(
-        25 + vertical * 13 + horizontal * 5,
-        0,
-        255,
-    ).astype(np.uint8)
-
-    glow = np.zeros_like(background)
-    cv2.circle(
-        glow,
-        (round(width * 0.16), round(height * 0.22)),
-        max(35, round(min(width, height) * 0.28)),
-        (88, 50, 16),
-        -1,
-        cv2.LINE_AA,
-    )
-    cv2.circle(
-        glow,
-        (round(width * 0.82), round(height * 0.72)),
-        max(35, round(min(width, height) * 0.35)),
-        (53, 20, 77),
-        -1,
-        cv2.LINE_AA,
-    )
-    blur_size = max(31, (min(width, height) // 7) | 1)
-    glow = cv2.GaussianBlur(glow, (blur_size, blur_size), 0)
-    cv2.addWeighted(background, 1.0, glow, 0.27, 0, background)
-
-    # Small fixed specks give the generated scene some depth.  They are not
-    # arranged in columns, so they cannot be mistaken for the old game lanes.
+    """Cache a sparse star field over black, without using camera pixels."""
+    background = np.zeros((height, width, 3), dtype=np.uint8)
     random = np.random.default_rng(width * 100_003 + height)
-    count = max(20, min(90, width * height // 36_000))
-    for x, y, brightness in zip(
-        random.integers(0, width, count),
-        random.integers(0, height, count),
-        random.integers(28, 67, count),
-    ):
+    star_count = max(24, min(170, width * height // 6_500))
+    for _ in range(star_count):
+        point = (int(random.integers(width)), int(random.integers(height)))
+        prominence = random.random()
+        radius = 2 if prominence > 0.96 else 1 if prominence > 0.76 else 0
+        brightness = int(random.integers(48, 112 if radius else 82))
         cv2.circle(
             background,
-            (int(x), int(y)),
-            1,
-            (int(brightness), int(brightness), int(brightness + 9)),
+            point,
+            radius,
+            (brightness, brightness, brightness),
             -1,
             cv2.LINE_AA,
         )
@@ -161,16 +124,47 @@ def create_performance_stage(frame: np.ndarray, current_time: float = 0.0) -> np
     if not math.isfinite(time_value):
         time_value = 0.0
 
-    # Very faint non-lane motion makes the stage feel alive without competing
-    # with the falling notes or virtual drumsticks.
+    # Faint neutral outlines retain gentle motion without tinting the black
+    # stage or competing with the playable circles and virtual drumsticks.
     phase = time_value * 0.55
     center = (
         round(width * (0.50 + 0.10 * math.sin(phase))),
         round(height * (0.48 + 0.05 * math.cos(phase * 0.83))),
     )
-    for multiplier, color in ((0.18, (47, 50, 78)), (0.30, (43, 33, 67))):
+    for multiplier, color in ((0.18, (24, 24, 24)), (0.30, (16, 16, 16))):
         radius = max(25, round(min(width, height) * multiplier))
         cv2.circle(stage, center, radius, color, 1, cv2.LINE_AA)
+
+    # A few tiny glints breathe slowly; the falling notes remain the only
+    # bright moving objects on the stage.
+    for x_fraction, y_fraction, offset in (
+        (0.13, 0.26, 0.0),
+        (0.83, 0.18, 1.7),
+        (0.21, 0.73, 3.1),
+        (0.76, 0.68, 4.8),
+    ):
+        point = (round(width * x_fraction), round(height * y_fraction))
+        pulse = 0.5 + 0.5 * math.sin(time_value * 1.2 + offset)
+        brightness = round(48 + pulse * 48)
+        arm = max(1, round(min(width, height) * 0.003))
+        ray_color = (brightness // 3,) * 3
+        cv2.line(
+            stage,
+            (point[0] - arm, point[1]),
+            (point[0] + arm, point[1]),
+            ray_color,
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.line(
+            stage,
+            (point[0], point[1] - arm),
+            (point[0], point[1] + arm),
+            ray_color,
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.circle(stage, point, 1, (brightness,) * 3, -1, cv2.LINE_AA)
     return stage
 
 

@@ -41,6 +41,17 @@ class PerformanceStageTests(unittest.TestCase):
         self.assertEqual(stage.shape, camera.shape)
         self.assertEqual(stage.dtype, camera.dtype)
         self.assertFalse(np.any(np.all(stage == (0, 250, 0), axis=2)))
+        self.assertGreater(np.count_nonzero(stage[:, :, 0] >= 40), 20)
+        self.assertLess(
+            np.count_nonzero(stage[:, :, 0]),
+            camera.shape[0] * camera.shape[1] * 0.03,
+        )
+        np.testing.assert_array_equal(stage[:, :, 0], stage[:, :, 1])
+        np.testing.assert_array_equal(stage[:, :, 1], stage[:, :, 2])
+        np.testing.assert_array_equal(
+            stage,
+            create_performance_stage(camera, current_time=2.5),
+        )
 
     def test_virtual_drumsticks_follow_landmark_positions_at_showcase_sizes(self):
         for width, height in ((640, 480), (1280, 720), (1920, 1080)):
