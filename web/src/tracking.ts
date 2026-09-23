@@ -9,6 +9,8 @@ import modelUrl from '../../models/hand_landmarker.task?url'
 export interface TrackedHand {
   label: string
   landmarks: NormalizedLandmark[]
+  confidence?: number
+  identity?: string
 }
 
 export async function createHandTracker(): Promise<HandLandmarker> {
@@ -30,6 +32,7 @@ export function trackedHandsFrom(result: HandLandmarkerResult): TrackedHand[] {
     if (landmarks.length < 21) return []
     return [{
       label: result.handedness[index]?.[0]?.categoryName ?? `Hand ${index + 1}`,
+      confidence: result.handedness[index]?.[0]?.score ?? 0,
       landmarks,
     }]
   })

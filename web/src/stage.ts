@@ -1,5 +1,8 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import type { TrackedHand } from './tracking'
+import type { FallingNode, RhythmGame } from './game'
+import { nodeRadius } from './game'
+import { INSTRUMENTS, noteName } from './music'
 
 type Point = { x: number; y: number }
 type Star = { x: number; y: number; radius: number; alpha: number }
@@ -53,7 +56,12 @@ export class StageRenderer {
     this.ctx = ctx
   }
 
-  render(hands: TrackedHand[], timeMs: number): void {
+  size(): { width: number; height: number } {
+    this.resizeIfNeeded()
+    return { width: this.width, height: this.height }
+  }
+
+  render(hands: TrackedHand[], timeMs: number, game?: RhythmGame, reducedMotion = false): void {
     this.resizeIfNeeded()
     const { ctx, width, height } = this
     ctx.fillStyle = '#020305'
@@ -64,7 +72,7 @@ export class StageRenderer {
       circle(ctx, { x: star.x * width, y: star.y * height }, star.radius)
     }
 
-    const seconds = timeMs / 1000
+    const seconds = reducedMotion ? 0 : timeMs / 1000
     const center = {
       x: width * (0.50 + 0.10 * Math.sin(seconds * 0.55)),
       y: height * (0.48 + 0.05 * Math.cos(seconds * 0.46)),
@@ -83,7 +91,72 @@ export class StageRenderer {
       circle(ctx, { x: width * x, y: height * y }, 1.4)
     }
 
+    if (game) {
+      for (const node of game.nodes) this.drawNode(node, Boolean(node.event) && game.round?.nextUnresolvedIndex === node.event?.index)
+      for (const effect of game.effects) this.drawEffect(effect, timeMs / 1000)
+    }
+
     hands.forEach((hand, index) => this.drawStick(hand, colorFor(hand, index)))
+  }
+
+  private drawNode(node: FallingNode, next: boolean): void {
+    const { ctx, width, height } = this
+    const x = node.xRatio * width
+    const y = node.yRatio * height
+    const radius = nodeRadius(width, height)
+    if (y + radius < 0 || y - radius > height) return
+    ctx.save()
+    ctx.shadowColor = node.color
+    ctx.shadowBlur = radius * (next ? 0.9 : 0.6)
+    const fill = ctx.createRadialGradient(x - radius * 0.28, y - radius * 0.34, 1, x, y, radius)
+    fill.addColorStop(0, '#ffffff')
+    fill.addColorStop(0.16, node.color)
+    fill.addColorStop(0.88, '#101925')
+    fill.addColorStop(1, node.color)
+    ctx.fillStyle = fill
+    circle(ctx, { x, y }, radius)
+    ctx.shadowBlur = 0
+    ctx.strokeStyle = node.color
+    ctx.lineWidth = Math.max(2, radius * 0.06)
+    ctx.stroke()
+    ctx.fillStyle = '#f8fbff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = `800 ${Math.max(13, radius * 0.45)}px system-ui, sans-serif`
+    const label = node.event ? noteName(node.pitch) : INSTRUMENTS.find(item => item.key === node.instrument)!.label
+    const labelY = y - (node.event ? radius * 0.1 : 0)
+    ctx.strokeStyle = '#06111b'
+    ctx.lineWidth = Math.max(2, radius * 0.08)
+    ctx.strokeText(label, x, labelY)
+    ctx.fillText(label, x, labelY)
+    if (node.event) {
+      ctx.fillStyle = '#bed0df'
+      ctx.font = `700 ${Math.max(10, radius * 0.22)}px system-ui, sans-serif`
+      ctx.fillText(String(node.event.index + 1).padStart(2, '0'), x, y + radius * 0.38)
+    }
+    ctx.restore()
+  }
+
+  private drawEffect(effect: RhythmGame['effects'][number], now: number): void {
+    const age = now - effect.at
+    if (age < 0 || age > 0.35) return
+    const { ctx, width, height } = this
+    const x = effect.xRatio * width
+    const y = effect.yRatio * height - age * height * 0.08
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, 1 - age / 0.35)
+    ctx.shadowColor = effect.color
+    ctx.shadowBlur = 18
+    ctx.fillStyle = '#f8fbff'
+    ctx.font = `800 ${Math.max(14, Math.min(width, height) * 0.024)}px system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(effect.label, x, y)
+    if (effect.detail) {
+      ctx.font = `700 ${Math.max(10, Math.min(width, height) * 0.013)}px system-ui, sans-serif`
+      ctx.fillStyle = effect.color
+      ctx.fillText(effect.detail, x, y + 18)
+    }
+    ctx.restore()
   }
 
   private resizeIfNeeded(): void {

@@ -64,7 +64,7 @@ button { font: inherit; }
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
-.stop-button {
+.quiet-button {
   padding: 0.48rem 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 999px;
@@ -73,7 +73,7 @@ button { font: inherit; }
   font-size: 0.72rem;
   cursor: pointer;
 }
-.stop-button:hover { border-color: #ff7fba; }
+.quiet-button:hover { border-color: #61e4ff; }
 button:focus-visible { outline: 3px solid #61e4ff; outline-offset: 4px; }
 
 .welcome {
@@ -129,6 +129,84 @@ h1 {
 .start-button span { font-size: 1.3rem; line-height: 0.7; }
 .message { min-height: 1.5rem; margin-top: 1.25rem; color: #8f9aa7; font-size: 0.78rem; }
 .experience[data-mode="error"] .message { color: #ffa3a3; }
+
+.menu-panel, .results-panel, .help-panel {
+  position: absolute;
+  z-index: 1;
+  top: 43%;
+  left: 50%;
+  width: min(89vw, 800px);
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.menu-panel h1, .results-panel h1 { font-size: clamp(2.75rem, 7vw, 6.5rem); }
+.menu-actions { display: flex; align-items: center; justify-content: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 2rem; }
+.menu-actions .start-button { margin-top: 0; }
+.secondary-button {
+  min-height: 3.2rem;
+  padding: 0.7rem 1.3rem;
+  border: 1px solid rgba(150, 188, 205, 0.42);
+  border-radius: 0.85rem;
+  color: #e5f1f7;
+  background: rgba(12, 23, 31, 0.82);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+.secondary-button:hover { border-color: #61e4ff; }
+.menu-caption { margin: 1.3rem 0 0; color: #899eaa; font-size: 0.76rem; }
+
+.game-hud {
+  position: absolute;
+  z-index: 1;
+  top: clamp(5rem, 9vh, 7rem);
+  left: clamp(1rem, 3vw, 3rem);
+  width: min(440px, 43vw);
+  padding: 1rem 1.15rem 0.7rem;
+  border: 1px solid rgba(130, 177, 197, 0.2);
+  border-radius: 1rem;
+  background: rgba(5, 12, 18, 0.82);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+}
+.hud-title { display: flex; justify-content: space-between; gap: 0.4rem; align-items: center; flex-wrap: wrap; color: #64dff6; font-size: 0.59rem; font-weight: 800; letter-spacing: 0.12em; }
+.hud-title strong { color: #f4f9fc; font-size: 0.77rem; }
+.hud-values { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin-top: 0.85rem; }
+.hud-values span { display: grid; gap: 0.2rem; color: #829ba9; font-size: 0.53rem; font-weight: 800; letter-spacing: 0.07em; }
+.hud-values strong { color: #f4f9fc; font-size: 1.08rem; letter-spacing: -0.04em; }
+.progress-track { height: 4px; margin-top: 0.95rem; border-radius: 999px; background: #153039; overflow: hidden; }
+#progress-fill { width: 0; height: 100%; border-radius: inherit; background: #61e4ff; }
+#game-guide { margin: 0.7rem 0 0; color: #a4b8c4; font-size: 0.7rem; line-height: 1.4; }
+.countdown {
+  position: absolute;
+  z-index: 1;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #f6fcff;
+  font-size: clamp(6rem, 18vw, 15rem);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 55px rgba(97, 228, 255, 0.45);
+  pointer-events: none;
+}
+.result-score { margin: 0.9rem 0 0; color: #61e4ff; font-size: clamp(1.4rem, 3vw, 2.3rem); font-weight: 850; letter-spacing: 0.04em; }
+.result-detail { margin: 1rem auto 0; color: #abbec9; font-size: clamp(0.8rem, 1.4vw, 1rem); line-height: 1.6; }
+.help-panel {
+  width: min(90vw, 680px);
+  z-index: 4;
+  padding: clamp(1.2rem, 3vw, 2.4rem);
+  border: 1px solid rgba(137, 202, 219, 0.28);
+  border-radius: 1.15rem;
+  background: rgba(5, 13, 20, 0.96);
+  box-shadow: 0 25px 90px rgba(0, 0, 0, 0.55);
+  text-align: left;
+}
+.help-panel h2 { margin: 0 0 1rem; font-size: clamp(1.7rem, 3vw, 2.4rem); }
+.help-panel p:not(.eyebrow) { color: #b4c5cf; font-size: 0.88rem; line-height: 1.6; }
+.help-panel .help-keys { color: #64dff6 !important; font-size: 0.72rem !important; font-weight: 800; }
+.help-panel .start-button { margin-top: 0.8rem; }
+.experience[data-screen="challenge"] .input-panel, .experience[data-screen="free"] .input-panel { width: clamp(210px, 23vw, 370px); }
 
 .live-guide {
   position: absolute;
@@ -189,6 +267,8 @@ h1 {
   .footer { font-size: 0.59rem; }
   .footer p:last-child { display: none; }
   .footer p:first-child { max-width: 100%; }
+  .game-hud { top: 4.6rem; width: min(430px, 64vw); }
+  .experience[data-screen="challenge"] .input-panel, .experience[data-screen="free"] .input-panel { width: min(38vw, 270px); }
 }
 
 @media (max-width: 520px) {
@@ -198,6 +278,17 @@ h1 {
   .input-panel { right: 0.8rem; bottom: 3.8rem; width: min(52vw, 240px); }
   .input-heading { font-size: 0.49rem; }
   .live-guide { top: 4.9rem; }
+  .top-actions { gap: 0.3rem; }
+  .quiet-button { padding: 0.37rem 0.45rem; font-size: 0.63rem; }
+  .topbar { gap: 0.3rem; }
+  .brand { font-size: 0.72rem; }
+  .game-hud { top: 4.1rem; left: 0.6rem; width: calc(100vw - 1.2rem); padding: 0.55rem 0.7rem; }
+  .hud-values strong { font-size: 0.95rem; }
+  #game-guide { display: none; }
+  .experience[data-screen="challenge"] .input-panel, .experience[data-screen="free"] .input-panel { width: min(42vw, 200px); }
+  .menu-panel, .results-panel { top: 38%; }
+  .menu-panel .intro-copy { font-size: 0.9rem; }
+  .help-panel { top: 46%; max-height: 70vh; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
