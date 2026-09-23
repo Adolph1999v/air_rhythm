@@ -8,6 +8,91 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   },
 }
 
+/** Process actual presented camera frames, not every change in video.currentTime. */
+export class CameraFrameGate {
+  private video: HTMLVideoElement | null = null
+  private callbackId: number | null = null
+  private generation = 0
+  private pending = false
+  private lastCallbackAt = 0
+  private lastQualityCount: number | null = null
+  private lastCurrentTime = -1
+  private lastProcessedAt = 0
+
+  start(video: HTMLVideoElement, now: number): void {
+    this.stop()
+    this.video = video
+    this.lastCallbackAt = now
+    this.lastProcessedAt = now
+    this.lastCurrentTime = video.currentTime
+    this.lastQualityCount = this.qualityCount(video)
+    const generation = this.generation
+    if (typeof video.requestVideoFrameCallback !== 'function') return
+
+    const onFrame: VideoFrameRequestCallback = (timeMs) => {
+      if (generation !== this.generation || this.video !== video) return
+      this.pending = true
+      this.lastCallbackAt = timeMs / 1000
+      this.callbackId = video.requestVideoFrameCallback(onFrame)
+    }
+    try {
+      this.callbackId = video.requestVideoFrameCallback(onFrame)
+    } catch {
+      this.callbackId = null
+    }
+  }
+
+  consume(now: number): boolean {
+    const video = this.video
+    if (!video) return false
+    const count = this.qualityCount(video)
+    if (this.pending) {
+      this.pending = false
+      this.recordFrame(now, count)
+      return true
+    }
+    // Some browsers stop video-frame callbacks for an invisible <video>.
+    // A displayed-frame counter is a fallback; currentTime alone is last resort.
+    if (this.callbackId !== null && now - this.lastCallbackAt < 0.1) return false
+    if (count !== null && (this.lastQualityCount === null || count > this.lastQualityCount)) {
+      this.recordFrame(now, count)
+      return true
+    }
+    if ((count === null || count === 0) && now - this.lastProcessedAt >= 1 / 30 &&
+        video.currentTime > this.lastCurrentTime) {
+      this.recordFrame(now, count)
+      return true
+    }
+    return false
+  }
+
+  stop(): void {
+    this.generation += 1
+    if (this.video && this.callbackId !== null) {
+      try { this.video.cancelVideoFrameCallback(this.callbackId) } catch { /* The video may already have stopped. */ }
+    }
+    this.video = null
+    this.callbackId = null
+    this.pending = false
+    this.lastQualityCount = null
+    this.lastCurrentTime = -1
+  }
+
+  private recordFrame(now: number, count: number | null): void {
+    this.lastProcessedAt = now
+    this.lastQualityCount = count
+    this.lastCurrentTime = this.video?.currentTime ?? -1
+  }
+
+  private qualityCount(video: HTMLVideoElement): number | null {
+    try {
+      const quality = video.getVideoPlaybackQuality?.()
+      const count = quality ? quality.totalVideoFrames - (quality.droppedVideoFrames ?? 0) : undefined
+      return count !== undefined && Number.isFinite(count) ? count : null
+    } catch { return null }
+  }
+}
+
 export async function requestCameraStream(): Promise<MediaStream> {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('Camera access requires localhost or a secure HTTPS page.')

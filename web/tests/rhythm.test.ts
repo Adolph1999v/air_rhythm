@@ -80,6 +80,7 @@ describe('falling notes and fingertip contact', () => {
     game.update(103, width, height)
     const node = game.nodes[0]
     const round = game.round!
+    expect(nodeRadius(width, height)).toBe(46) // Python int(800 * 0.0585)
     const beforeSpeed = challengeNodeY(node, 104, width, height, round) - challengeNodeY(node, 103, width, height, round)
     const afterSpeed = challengeNodeY(node, 106, width, height, round) - challengeNodeY(node, 105, width, height, round)
     expect(beforeSpeed).toBeCloseTo(afterSpeed)
@@ -133,5 +134,15 @@ describe('falling notes and fingertip contact', () => {
     expect(game.nodes).toHaveLength(0)
     game.setPaused(false, 111)
     expect(game.round!.targetTime(game.round!.chart[0])).toBe(target + 10)
+  })
+
+  it('caps a slow free-play update at the desktop limit instead of fast-forwarding notes', () => {
+    const game = new RhythmGame(() => 0.5)
+    game.startFree(100)
+    game.update(100.01, width, height)
+    const node = game.nodes[0]
+    const initialY = node.yRatio
+    game.update(101, width, height)
+    expect(node.yRatio - initialY).toBeCloseTo(0.28 * 0.1)
   })
 })

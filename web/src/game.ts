@@ -34,14 +34,14 @@ const CHALLENGE_TARGET_RATIO = 0.30
 const EFFECT_SECONDS = 0.35
 
 export function nodeRadius(width: number, height: number): number {
-  return Math.max(34, Math.min(width, height) * 0.0585)
+  return Math.max(34, Math.floor(Math.min(width, height) * 0.0585))
 }
 
 export function challengeNodeY(node: FallingNode, now: number, width: number, height: number, round: RhythmRound): number {
   if (!node.event) throw new Error('Challenge node has no chart event.')
-  const radiusRatio = nodeRadius(width, height) / height
-  const speedRatio = Math.max(1 / height, (CHALLENGE_TARGET_RATIO - radiusRatio) / round.nodeTravelSeconds)
-  return radiusRatio + speedRatio * Math.max(0, now - round.spawnTime(node.event))
+  const radius = nodeRadius(width, height)
+  const speed = Math.max(1, (height * CHALLENGE_TARGET_RATIO - radius) / round.nodeTravelSeconds)
+  return (radius + speed * Math.max(0, now - round.spawnTime(node.event))) / height
 }
 
 export class RhythmGame {
@@ -55,6 +55,7 @@ export class RhythmGame {
   private lastSpawnTime = 0
   private nextId = 1
   private pausedAt: number | null = null
+  private lastFreeUpdateAt: number | null = null
 
   constructor(private readonly random: () => number = Math.random) {}
 
@@ -68,6 +69,7 @@ export class RhythmGame {
     this.clear()
     this.screen = 'free'
     this.lastSpawnTime = now - SPAWN_INTERVAL_SECONDS
+    this.lastFreeUpdateAt = now
   }
 
   toMenu(): void {
@@ -82,6 +84,7 @@ export class RhythmGame {
       this.round?.delayTimeline(duration)
       this.lastSpawnTime += duration
       for (const node of this.nodes) node.spawnedAt += duration
+      this.lastFreeUpdateAt = now
       this.pausedAt = null
     }
   }
@@ -91,6 +94,11 @@ export class RhythmGame {
     const radius = nodeRadius(width, height)
     const radiusRatio = radius / height
     const hits: NodeHit[] = []
+    // Desktop free play advances by at most 100 ms per fresh update, so a
+    // delayed browser frame must not make its notes leap down the screen.
+    const freeElapsed = this.screen === 'free'
+      ? Math.max(0, Math.min(now - (this.lastFreeUpdateAt ?? now), 0.1)) : 0
+    if (this.screen === 'free') this.lastFreeUpdateAt = now
     this.effects.splice(0, this.effects.length, ...this.effects.filter(effect => now - effect.at < EFFECT_SECONDS))
 
     if (this.screen === 'challenge' && this.round) {
@@ -103,7 +111,7 @@ export class RhythmGame {
     const remaining: FallingNode[] = []
     for (const node of this.nodes) {
       node.yRatio = node.event && this.round ? challengeNodeY(node, now, width, height, this.round) :
-        radiusRatio + FREE_FALL_PER_SECOND * Math.max(0, now - node.spawnedAt)
+        node.yRatio + FREE_FALL_PER_SECOND * freeElapsed
       const center = { x: node.xRatio * width, y: node.yRatio * height }
       const touching = motions.filter(motion => motionTouchesCircle(motion, center, radius + 10))
       if (touching.length) {
@@ -157,5 +165,6 @@ export class RhythmGame {
     this.freeHits = 0
     this.freeMisses = 0
     this.pausedAt = null
+    this.lastFreeUpdateAt = null
   }
 }

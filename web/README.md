@@ -8,6 +8,8 @@ The browser now plays the desktop app's 35-note song challenge and four-sound fr
 
 The song clock, order penalty, timing windows, score, and melody match the desktop logic. The checked-in browser melody data is compared against `../music.py` by a Python parity test. Camera landmarks are smoothed before rendering and fingertip-path collision checks. The main starfield is generated graphics; camera pixels appear only in the live-input inset with the 21-point hand skeleton.
 
+Motion parity: both versions request 1280×720 at 30 FPS and cap larger camera frames at 1280×720 for tracking. The web version processes presented camera frames rather than repeatedly tracking the same frame at the screen's refresh rate. Challenge notes keep the desktop two-second trip to the 30%-height beat point and continue at that exact speed; free-play notes use the desktop 28%-of-stage-height-per-second fall with its 100 ms slow-frame cap. The same adaptive hand filter and movement thresholds remain in use.
+
 ## Run locally
 
 Use Node.js 20.19+ or 22.12+. From the repository root:

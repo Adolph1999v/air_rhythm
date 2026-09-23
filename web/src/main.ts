@@ -1,4 +1,4 @@
-import { attachCamera, cameraErrorMessage, requestCameraStream, stopCamera } from './camera'
+import { attachCamera, cameraErrorMessage, CameraFrameGate, requestCameraStream, stopCamera } from './camera'
 import { BrowserAudio } from './audio'
 import { RhythmGame } from './game'
 import { FingertipMotionTracker, HandStabilizer, type FingertipMotion } from './hands'
@@ -105,6 +105,7 @@ const game = new RhythmGame()
 const stage = new StageRenderer(requiredElement<HTMLCanvasElement>('#stage'))
 const stabilizer = new HandStabilizer()
 const motionTracker = new FingertipMotionTracker()
+const cameraFrames = new CameraFrameGate()
 const mirroredFrame = document.createElement('canvas')
 const mirroredContext = mirroredFrame.getContext('2d')
 if (!mirroredContext) throw new Error('This browser cannot prepare camera frames.')
@@ -114,7 +115,6 @@ let tracker: HandLandmarker | null = null
 let audioContext: AudioContext | null = null
 let audio: BrowserAudio | null = null
 let activeHands: TrackedHand[] = []
-let lastVideoTime = -1
 let sessionId = 0
 let shownHandCount = -1
 let helpOpen = false
@@ -166,13 +166,14 @@ function setHandCount(count: number): void {
 function endSession(message: string, mode: Mode = 'idle'): void {
   sessionId += 1
   tracker?.close(); tracker = null
+  cameraFrames.stop()
   stopCamera(video, stream); stream = null
   audio?.stopAll(); audio = null
   if (audioContext) void audioContext.close().catch(() => {})
   audioContext = null
   activeHands = []
   stabilizer.reset(); motionTracker.reset(); game.toMenu()
-  helpOpen = false; lastVideoTime = -1; shownHandCount = -1
+  helpOpen = false; shownHandCount = -1
   inputPreview.getContext('2d')?.clearRect(0, 0, inputPreview.width, inputPreview.height)
   cameraPlaceholder.hidden = false
   cameraBadge.textContent = 'CAMERA OFF'
@@ -205,6 +206,7 @@ async function startSession(): Promise<void> {
     stream = requestedStream
     await attachCamera(video, requestedStream)
     if (token !== sessionId) return
+    cameraFrames.start(video, nowSeconds())
     requestedStream.getVideoTracks()[0]?.addEventListener('ended', () => {
       if (token === sessionId) endSession('The camera disconnected. Reconnect it and try again.', 'error')
     }, { once: true })
@@ -225,7 +227,8 @@ async function startSession(): Promise<void> {
 }
 
 function updateMirroredFrame(): void {
-  const scale = Math.min(1, 960 / video.videoWidth, 720 / video.videoHeight)
+  // The desktop pipeline processes up to 1280×720; use the same landmark input size.
+  const scale = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight)
   const width = Math.max(1, Math.round(video.videoWidth * scale))
   const height = Math.max(1, Math.round(video.videoHeight * scale))
   if (mirroredFrame.width !== width || mirroredFrame.height !== height) {
@@ -309,8 +312,7 @@ function animationFrame(timeMs: number): void {
   const { width, height } = stage.size()
   let motions: FingertipMotion[] = []
   if (stream && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 &&
-      video.currentTime !== lastVideoTime) {
-    lastVideoTime = video.currentTime
+      cameraFrames.consume(now)) {
     try {
       updateMirroredFrame()
       if (tracker) {
