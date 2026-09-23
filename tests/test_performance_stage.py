@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -21,6 +22,12 @@ def hand_at(x: float, y: float):
     landmarks[9] = SimpleNamespace(x=x, y=y + 0.10)
     landmarks[12] = SimpleNamespace(x=x + 0.04, y=y - 0.12)
     return landmarks
+
+
+class NamedHand(list):
+    def __init__(self, landmarks, identity):
+        super().__init__(landmarks)
+        self.identity = identity
 
 
 class PerformanceStageTests(unittest.TestCase):
@@ -44,6 +51,17 @@ class PerformanceStageTests(unittest.TestCase):
 
                 self.assertEqual(stage.shape, before.shape)
                 self.assertFalse(np.array_equal(stage, before))
+
+    def test_virtual_drumstick_colours_follow_identity_not_result_order(self):
+        stage = create_performance_stage(self.camera_frame())
+        right = NamedHand(hand_at(0.70, 0.48), "Right")
+        left = NamedHand(hand_at(0.35, 0.55), "Left")
+
+        with patch("performance_stage._draw_stick") as draw_stick:
+            draw_virtual_drumsticks(stage, [right, left])
+
+        self.assertEqual(draw_stick.call_args_list[0].args[-1], (224, 94, 255))
+        self.assertEqual(draw_stick.call_args_list[1].args[-1], (255, 221, 71))
 
     def test_collision_points_show_every_active_fingertip(self):
         stage = create_performance_stage(self.camera_frame())

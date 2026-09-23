@@ -99,7 +99,7 @@ Plans are ranked by career and learning value:
 - Baseline: 15.03 average FPS from a 77.20-second run with 1920×1080 captured frames and a 1920×1200 generated stage.
 - First optimisation: two 1280×720 runs measured 16.04 and 16.59 average FPS; rendering improved, but serial camera waiting still dominated the loop.
 - Next run: play for at least 60 seconds with background latest-frame capture and compare every timing row with both earlier architectures.
-- If the measured frame rate becomes stable but the drumsticks still jitter, add an adaptive landmark filter that reacts quickly during deliberate movement.
+- Validate the new adaptive landmark filtering against the low-hand-position recording and tune only from repeatable observations.
 
 ### Evidence lifecycle
 
@@ -173,6 +173,13 @@ This will add original ML work while MediaPipe continues to provide the raw hand
 - Integrate a trained model into a real-time OpenCV application.
 
 ## Milestone 4 — Computer-vision robustness
+
+### Implemented foundation
+
+- Preserve stable Left/Right identities even when MediaPipe reverses its result-list order.
+- Adaptively smooth landmark position and orientation while relaxing the filter during fast deliberate movement.
+- Keep a lost hand's final stick pose visible for up to 140 ms, while immediately disabling its stale collision points.
+- Reset movement history when a hand disappears so reacquisition cannot create a false strike.
 
 ### Work
 

@@ -14,6 +14,7 @@ import numpy as np
 
 from audio_engine import AudioEngine
 from camera_capture import LatestFrameCamera
+from hand_stabilizer import HandLandmarkStabilizer
 from performance_benchmark import PerformanceBenchmark, save_benchmark_report
 from music import (
     ALL_PITCHES,
@@ -371,8 +372,15 @@ def collect_fingertip_motions(
     updated_history = {}
 
     for hand_index, hand_landmarks in enumerate(detection_result.hand_landmarks):
-        hand_identity = f"hand-{hand_index}"
-        if hand_index < len(detection_result.handedness):
+        hand_identity = getattr(
+            hand_landmarks,
+            "identity",
+            f"hand-{hand_index}",
+        )
+        if (
+            not getattr(hand_landmarks, "identity", None)
+            and hand_index < len(detection_result.handedness)
+        ):
             handedness = detection_result.handedness[hand_index]
             if handedness and handedness[0].category_name:
                 hand_identity = handedness[0].category_name
@@ -1049,6 +1057,7 @@ def main() -> None:
             print("Air Rhythm will keep running. Check your sound output and restart.")
         reported_audio_error = audio.error_message
         with create_hand_landmarker() as hand_landmarker:
+            hand_stabilizer = HandLandmarkStabilizer()
             previous_timestamp_ms = -1
             previous_frame_time = time.monotonic()
             last_spawn_time = previous_frame_time - NODE_SPAWN_INTERVAL_SECONDS
@@ -1110,7 +1119,7 @@ def main() -> None:
                 )
                 previous_timestamp_ms = timestamp_ms
                 inference_started_at = time.perf_counter()
-                detection_result = hand_landmarker.detect_for_video(
+                raw_detection_result = hand_landmarker.detect_for_video(
                     mp_image,
                     timestamp_ms,
                 )
@@ -1133,6 +1142,15 @@ def main() -> None:
                         dtype=mirrored_frame.dtype,
                     )
                 current_time = time.monotonic()
+                stabilized_hands = hand_stabilizer.update(
+                    raw_detection_result.hand_landmarks,
+                    raw_detection_result.handedness,
+                    current_time,
+                )
+                detection_result = stabilized_hands.active
+                visible_hand_landmarks = (
+                    stabilized_hands.visible.hand_landmarks
+                )
                 fingertip_motions, fingertip_history = collect_fingertip_motions(
                     detection_result,
                     stage_width,
@@ -1350,7 +1368,7 @@ def main() -> None:
                 # real hand and full skeleton remain visible in the inset.
                 draw_virtual_drumsticks(
                     display_frame,
-                    detection_result.hand_landmarks,
+                    visible_hand_landmarks,
                 )
                 draw_collision_points(
                     display_frame,
@@ -1550,6 +1568,14 @@ def main() -> None:
                                 "sound_status": sound_label,
                                 "maximum_hands": MAX_HANDS,
                                 "hand_model": "MediaPipe Hand Landmarker",
+                                "landmark_filter": "Adaptive One Euro-style",
+                                "landmark_min_cutoff": hand_stabilizer.min_cutoff,
+                                "landmark_speed_coefficient": (
+                                    hand_stabilizer.speed_coefficient
+                                ),
+                                "visual_dropout_grace_ms": round(
+                                    hand_stabilizer.dropout_grace_seconds * 1000
+                                ),
                             }
                         )
                         benchmark_notice = "BENCHMARK RECORDING"

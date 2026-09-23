@@ -42,6 +42,8 @@ Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented an
 - Privacy-safe JSON and Markdown benchmark reports that store no images or landmark coordinates
 - A responsive 1280×720 computer-vision input limit, even when a camera driver supplies larger frames
 - Background latest-frame camera capture that overlaps camera waiting with inference and rendering
+- Adaptive landmark smoothing that reduces stationary stick jitter while preserving deliberate strikes
+- Stable Left/Right hand identities and a short visual-only grace period for brief tracking loss
 - An optional OpenCV + MediaPipe technical overlay
 - Four colour-coded instruments and a free-play mode
 - Hands-only privacy, skeleton-only privacy, and normal-camera modes for the live-input inset
@@ -130,6 +132,7 @@ Webcam frame
     -> OpenCV mirrors the frame
     -> the frame is converted from BGR to RGB
     -> MediaPipe detects hand landmarks
+    -> adaptive filtering stabilises the landmarks and preserves hand identity
     -> normalized landmarks are converted to pixels
     -> the index-fingertip landmarks place virtual drumstick tips on a generated stage
     -> all active fingertip collision points are drawn on that stage
@@ -140,7 +143,9 @@ Webcam frame
     -> OpenCV draws the performance stage, interface, drumsticks, and input skeleton
 ```
 
-MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The app requests a 1280×720, 30 FPS camera mode and downscales larger frames before inference if the camera driver ignores that request. A background worker waits for camera frames while the main thread performs inference, game updates, and rendering. Only the newest complete frame is used, preventing a backlog of old input from adding visible latency. This bounds the amount of pixel work without stretching or upscaling smaller inputs. The application then converts the model's normalized output into pixel positions, keeps short movement histories, maps each index fingertip to a 2D virtual drumstick, exposes all collision points visually, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the motion, interaction, timing, and presentation systems are original application engineering.
+MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The app requests a 1280×720, 30 FPS camera mode and downscales larger frames before inference if the camera driver ignores that request. A background worker waits for camera frames while the main thread performs inference, game updates, and rendering. Only the newest complete frame is used, preventing a backlog of old input from adding visible latency. This bounds the amount of pixel work without stretching or upscaling smaller inputs.
+
+MediaPipe's raw landmark coordinates pass through an adaptive filter before they control the stage. Small changes are smoothed strongly while deliberate fast movement—including forward depth movement—automatically receives less smoothing. Persistent Left/Right identities prevent detector result-order changes from swapping stick colours or motion histories. If a hand disappears briefly, its last stick pose can remain visible for up to 140 ms to prevent flicker, but that stale pose is immediately excluded from collision detection. The application then converts the stabilised output into pixel positions, keeps short movement histories, maps each index fingertip to a 2D virtual drumstick, exposes all active collision points visually, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the filtering, motion, interaction, timing, and presentation systems are original application engineering.
 
 Press `D` during the demonstration to reveal the technical overlay. It makes the active pipeline visible through live FPS, background camera-read time, main-loop camera-wait time, camera preparation time, MediaPipe inference time, game-update time, rendering time, complete-frame time, hand count, processed landmark count, and the mean Left/Right handedness-classification confidence when available. That value is not presented as overall tracking accuracy. Press `D` again for the cleaner recording view.
 
@@ -148,7 +153,7 @@ Press `D` during the demonstration to reveal the technical overlay. It makes the
 
 Press `B` to begin a benchmark session. A compact recording badge shows elapsed time, recorded frames, average FPS, slow frames, estimated dropped frames, and the number of hit-to-audio-request samples. Play normally for at least 60 seconds, then press `B` again to stop and save matching JSON and Markdown reports in `benchmark_reports/`.
 
-The report includes average, median, 95th-percentile, best, and worst measurements for background camera reads, main-loop waits for fresh input, camera preparation, MediaPipe inference, game updates, rendering, the complete frame pipeline, and hit-frame audio requests. It also records camera frames intentionally skipped to keep input fresh, average and minimum FPS; requested, camera-reported, captured, processing, and stage resolutions; camera-reported FPS; input mode; sound status; operating system; machine architecture; and Python version. Background camera-read time overlaps other work and therefore must not be added to the complete-frame time.
+The report includes average, median, 95th-percentile, best, and worst measurements for background camera reads, main-loop waits for fresh input, camera preparation, MediaPipe inference, game updates, rendering, the complete frame pipeline, and hit-frame audio requests. It also records camera frames intentionally skipped to keep input fresh, average and minimum FPS; requested, camera-reported, captured, processing, and stage resolutions; camera-reported FPS; landmark-filter settings; input mode; sound status; operating system; machine architecture; and Python version. Background camera-read time overlaps other work and therefore must not be added to the complete-frame time.
 
 Raw benchmark files are temporary evidence stored only in the repository's ignored `benchmark_reports/` directory. They remain available while performance work is in progress. After the useful comparisons are consolidated into `docs/PERFORMANCE_STUDY.md`, the raw reports can be deleted rather than kept indefinitely.
 
@@ -198,6 +203,7 @@ rhythm_game.py               Song clock, timing grades, score, and round state
 performance_stage.py         Person-free stage, virtual drumsticks, and input inset
 performance_benchmark.py     Privacy-safe FPS, pipeline timing, and report generation
 camera_capture.py            Background latest-frame camera worker
+hand_stabilizer.py           Adaptive landmark filtering and stable hand identities
 ui.py                        Reusable title, HUD, help, debug, and results drawing
 models/hand_landmarker.task  Local MediaPipe hand model
 requirements.txt             Python dependencies

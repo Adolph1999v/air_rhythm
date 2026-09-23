@@ -31,6 +31,16 @@ STICK_ACCENTS = ((255, 221, 71), (224, 94, 255))
 _background_cache: OrderedDict[tuple[int, int], np.ndarray] = OrderedDict()
 
 
+def _stick_accent(hand, fallback_index: int) -> tuple[int, int, int]:
+    """Keep each hand's colour stable when detector result order changes."""
+    identity = str(getattr(hand, "identity", "")).casefold()
+    if identity == "left":
+        return STICK_ACCENTS[0]
+    if identity == "right":
+        return STICK_ACCENTS[1]
+    return STICK_ACCENTS[fallback_index % len(STICK_ACCENTS)]
+
+
 def _frame_size(frame: np.ndarray) -> tuple[int, int]:
     """Return an image's width and height with clear stage-rendering errors."""
     if not isinstance(frame, np.ndarray):
@@ -288,7 +298,7 @@ def draw_virtual_drumsticks(frame: np.ndarray, hand_landmarks) -> np.ndarray:
         tip = tuple(np.rint(index_tip).astype(int))
         handle = tuple(np.rint(index_tip - unit * stick_length).astype(int))
         body_radius = max(4, round(min_dimension * 0.0105))
-        accent = STICK_ACCENTS[hand_index % len(STICK_ACCENTS)]
+        accent = _stick_accent(hand, hand_index)
         _draw_stick(frame, handle, tip, body_radius, accent)
     return frame
 
@@ -311,7 +321,7 @@ def draw_collision_points(frame: np.ndarray, hand_landmarks) -> np.ndarray:
         points = _hand_points(hand, width, height)
         if points is None:
             continue
-        accent = STICK_ACCENTS[hand_index % len(STICK_ACCENTS)]
+        accent = _stick_accent(hand, hand_index)
         for fingertip_index in FINGERTIP_INDICES:
             point = tuple(np.rint(points[fingertip_index]).astype(int))
             left = max(0, point[0] - glow_radius)

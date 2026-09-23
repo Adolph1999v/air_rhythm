@@ -202,6 +202,11 @@ class AppSmokeTests(unittest.TestCase):
         save_report.assert_called_once()
         report = save_report.call_args.args[0]
         self.assertEqual(report["frame_count"], 1)
+        self.assertEqual(
+            report["metadata"]["landmark_filter"],
+            "Adaptive One Euro-style",
+        )
+        self.assertEqual(report["metadata"]["visual_dropout_grace_ms"], 140)
         self.assertFalse(report["privacy"]["camera_images_saved"])
         self.assertFalse(report["privacy"]["landmark_coordinates_saved"])
 
