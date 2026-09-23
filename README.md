@@ -6,9 +6,17 @@ The rhythm-game format makes the vision pipeline easy to see, but the main goal 
 
 MediaPipe supplies the **pretrained** Hand Landmarker used to find hands and their 21 landmarks. The surrounding pipeline—including camera handling, landmark history, fingertip paths, interaction logic, rhythm timing, audio, privacy rendering, and interface—is project engineering built around that model. MediaPipe was not trained by this project. A future milestone will add and evaluate an original temporal gesture classifier trained on recorded landmark sequences.
 
+## Measured performance
+
+![Bar chart comparing four live-camera runs: 15.03 FPS at 1080p with serial capture, 16.04 and 16.59 FPS at 720p with serial capture, and 30.39 FPS at 720p with background capture.](docs/performance_progress.svg)
+
+Reducing the camera resolution made drawing a little faster, but the main loop still waited for every camera frame. Reading frames in the background removed most of that wait. Across the measured runs, average FPS rose from **15.03 to 30.39**, while average frame processing fell from **50.41 ms to 20.12 ms**. The final 64.67-second run recorded **zero estimated dropped frames**. See the [performance study](docs/PERFORMANCE_STUDY.md) for the full method, timings, and limitations.
+
+These results come from one Apple Silicon Mac. The first run used 1920×1080 camera input; the later runs used 1280×720, so the comparison reflects both the resolution and pipeline changes. The current app requests 1280×720 at 30 FPS, scales larger frames down, and processes smaller frames at their native size. The camera's actual frame rate and performance on other computers may differ.
+
 ## Project status
 
-Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now presents the game on a generated, person-free performance stage: numbered circles fall across the full stage, virtual drumsticks mirror the tracked hands, and a compact lower-right live-input inset shows the real camera plus its landmark skeleton. Visible fingertip markers show exactly where contact is measured.
+Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. A live performance benchmark is complete; final demo recording and broader robustness checks are still pending. Air Rhythm now presents the game on a generated, person-free performance stage: numbered circles fall across the full stage, virtual drumsticks mirror the tracked hands, and a compact lower-right live-input inset shows the real camera plus its landmark skeleton. Visible fingertip markers show exactly where contact is measured.
 
 ### Current capabilities
 
@@ -51,10 +59,10 @@ Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented an
 
 ### Next milestone
 
-The benchmark recorder and two evidence-led performance changes are implemented. The next work will validate the background camera architecture with another repeatable live-camera session:
+The next work will test hand tracking across less ideal conditions and prepare the portfolio demo:
 
-- Compare the original 15.03 FPS baseline, the 16.04–16.59 FPS 720p results, and a new 60-second background-capture run.
-- Compare background camera read, main-loop camera wait, MediaPipe inference, rendering, complete-frame, skipped-source-frame, and audio-request measurements.
+- Test one and two hands, low hand positions, partial occlusion, and varied lighting with a repeatable checklist.
+- Record a short demo that shows gameplay and the live technical overlay.
 - Calibrate camera and audio delay from measured results.
 - Collect labelled landmark sequences for a custom temporal gesture classifier.
 - Compare the trained classifier with the current rule-based movement logic using precision, recall, F1 score, and a confusion matrix.
@@ -155,7 +163,7 @@ Press `B` to begin a benchmark session. A compact recording badge shows elapsed 
 
 The report includes average, median, 95th-percentile, best, and worst measurements for background camera reads, main-loop waits for fresh input, camera preparation, MediaPipe inference, game updates, rendering, the complete frame pipeline, and hit-frame audio requests. It also records camera frames intentionally skipped to keep input fresh, average and minimum FPS; requested, camera-reported, captured, processing, and stage resolutions; camera-reported FPS; landmark-filter settings; input mode; sound status; operating system; machine architecture; and Python version. Background camera-read time overlaps other work and therefore must not be added to the complete-frame time.
 
-Raw benchmark files are temporary evidence stored only in the repository's ignored `benchmark_reports/` directory. They remain available while performance work is in progress. After the useful comparisons are consolidated into `docs/PERFORMANCE_STUDY.md`, the raw reports can be deleted rather than kept indefinitely.
+The complete benchmark methodology, before-and-after measurements, bottleneck analysis, limitations, and conclusions are documented in [`docs/PERFORMANCE_STUDY.md`](docs/PERFORMANCE_STUDY.md). Raw report files are temporary local evidence in the ignored `benchmark_reports/` directory and are deleted after their useful measurements are consolidated into that study.
 
 The audio figure is intentionally labelled **frame start to audio request**. It measures the software path through camera capture, landmark inference, collision detection, and the call to the audio engine. It does not claim to measure when a physical speaker produces sound. Estimated dropped frames are inferred from the 30 FPS frame budget. Reports contain no camera images and no hand-landmark coordinates.
 
@@ -208,6 +216,7 @@ ui.py                        Reusable title, HUD, help, debug, and results drawi
 models/hand_landmarker.task  Local MediaPipe hand model
 requirements.txt             Python dependencies
 tests/                       Camera-free game, privacy, music, and audio checks
+docs/PERFORMANCE_STUDY.md    Measured pipeline optimisation case study
 FUTURE_PLAN.md               Career-focused milestones and deferred ideas
 ```
 
@@ -224,9 +233,9 @@ Run the automated checks without opening the camera or speakers:
 - [x] Phase 3 — Free-falling nodes and hybrid fingertip collision
 - [x] Phase 4 — Sound, beat scheduling, scoring, and first music chart
 - [x] Phase 5 implementation — Portfolio UI, compact HUD, help, progress, and technical overlay
-- [ ] Phase 5 validation — Live 720p/1080p camera check and a clear 30-second recording
+- [ ] Phase 5 validation — Camera edge-case checks and a clear 30-second recording
 - [x] Performance recorder — FPS, pipeline timings, estimated dropped frames, and privacy-safe reports
-- [ ] Next — Live benchmark evidence, audio calibration, and robustness testing
+- [ ] Next — Demo recording, audio calibration, and robustness testing
 - [ ] Later — Custom temporal gesture dataset, model training, and evaluation
 
 See [FUTURE_PLAN.md](FUTURE_PLAN.md) for definitions of done, learning outcomes, and optional product ideas kept outside the current portfolio scope.

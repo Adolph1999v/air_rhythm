@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 344" role="img" aria-labelledby="chart-title chart-desc">
+  <title id="chart-title">Air Rhythm live camera performance progress</title>
+  <desc id="chart-desc">Four benchmark runs on the same Mac: the original 1080p serial camera pipeline averaged 15.03 frames per second; two 720p serial runs averaged 16.04 and 16.59; the final 720p background camera pipeline averaged 30.39. The dashed line marks the requested 30 FPS camera rate.</desc>
+
+  <rect x="1" y="1" width="918" height="342" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="32" y="42" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="700">Live camera performance</text>
+  <text x="32" y="69" fill="#b6c2d3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15">Average FPS across four measured runs</text>
+
+  <text x="32" y="126" fill="#e2e8f0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">1080p · serial camera</text>
+  <text x="32" y="178" fill="#e2e8f0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">720p · serial run 1</text>
+  <text x="32" y="230" fill="#e2e8f0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">720p · serial run 2</text>
+  <text x="32" y="282" fill="#e2e8f0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">720p · background camera</text>
+
+  <rect x="304" y="103" width="464" height="30" rx="8" fill="#283449"/>
+  <rect x="304" y="155" width="464" height="30" rx="8" fill="#283449"/>
+  <rect x="304" y="207" width="464" height="30" rx="8" fill="#283449"/>
+  <rect x="304" y="259" width="464" height="30" rx="8" fill="#283449"/>
+
+  <rect x="304" y="103" width="218" height="30" rx="8" fill="#f59e0b"/>
+  <rect x="304" y="155" width="233" height="30" rx="8" fill="#fbbf24"/>
+  <rect x="304" y="207" width="241" height="30" rx="8" fill="#fbbf24"/>
+  <rect x="304" y="259" width="441" height="30" rx="8" fill="#34d399"/>
+
+  <line x1="739" y1="94" x2="739" y2="299" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="739" y="87" text-anchor="middle" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">30 FPS requested</text>
+
+  <text x="850" y="126" text-anchor="end" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700">15.03</text>
+  <text x="850" y="178" text-anchor="end" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700">16.04</text>
+  <text x="850" y="230" text-anchor="end" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700">16.59</text>
+  <text x="850" y="282" text-anchor="end" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700">30.39</text>
+
+  <text x="32" y="326" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">Same Apple Silicon Mac · September 2026 · 30 FPS camera request</text>
+</svg>

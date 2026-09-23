@@ -94,18 +94,19 @@ Plans are ranked by career and learning value:
 - Read camera frames on a background worker so device waiting can overlap MediaPipe inference and rendering.
 - Track the main-loop wait for fresh input and source frames intentionally skipped to avoid stale latency.
 
-### Current comparison target
+### Measured result
 
 - Baseline: 15.03 average FPS from a 77.20-second run with 1920×1080 captured frames and a 1920×1200 generated stage.
 - First optimisation: two 1280×720 runs measured 16.04 and 16.59 average FPS; rendering improved, but serial camera waiting still dominated the loop.
-- Next run: play for at least 60 seconds with background latest-frame capture and compare every timing row with both earlier architectures.
-- Validate the new adaptive landmark filtering against the low-hand-position recording and tune only from repeatable observations.
+- Final 64.67-second run: 30.39 average FPS, zero estimated dropped frames, 20.12 ms average complete-frame time, and 9.48 ms average frame-start-to-audio-request time across 70 hit frames.
+- Background latest-frame capture was the decisive architecture change; the full comparison and limitations are documented in `docs/PERFORMANCE_STUDY.md`.
+- Manual low-hand-position testing found the adaptive filter smoother, with residual edge-of-frame vibration retained as a documented limitation rather than hidden by input-delaying over-smoothing.
 
 ### Evidence lifecycle
 
-- Keep raw JSON and Markdown measurements temporarily in the repository-local, ignored `benchmark_reports/` directory.
-- Consolidate the methodology, bottlenecks, architecture changes, before/after table, and conclusions into `docs/PERFORMANCE_STUDY.md`.
-- Delete raw benchmark files after the consolidated study contains every result needed for the portfolio.
+- Raw JSON and Markdown measurements were kept temporarily in the repository-local, ignored `benchmark_reports/` directory.
+- The methodology, bottlenecks, architecture changes, before/after table, and conclusions are consolidated in `docs/PERFORMANCE_STUDY.md`.
+- Raw benchmark files are deleted after consolidation so temporary evidence does not accumulate outside the maintained study.
 
 ### Definition of Done
 
