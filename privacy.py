@@ -1,4 +1,4 @@
-"""Privacy-safe camera rendering for Air Rhythm.
+"""Privacy-safe live-input rendering for Air Rhythm.
 
 The hands-only view reveals real camera pixels only inside masks inferred from the
 21 hand landmarks.  Pixels outside those masks are replaced with an opaque stage.
@@ -53,7 +53,7 @@ def next_privacy_mode(mode: PrivacyMode) -> PrivacyMode:
 
 
 class PrivacyRenderer:
-    """Replace private camera areas before game graphics are drawn.
+    """Replace private camera areas before the live-input inset is drawn.
 
     ``apply`` always returns a new array with the same shape and dtype as the
     input frame.  In ``CAMERA`` mode that array is an unchanged copy.  Drawing

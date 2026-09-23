@@ -8,17 +8,21 @@ MediaPipe supplies the **pretrained** Hand Landmarker used to find hands and the
 
 ## Project status
 
-Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now has a portfolio-ready title screen, timed song challenge, free play, scoring, privacy views, and an optional technical overlay. Coloured circles fall from the top of the full camera frame at varied horizontal positions. Fingertip contact drives the music, while a shrinking halo teaches the player when to hit.
+Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented and covered by camera-free rendering tests. Final live-camera and recording validation is still pending. Air Rhythm now presents the game on a generated, person-free performance stage: numbered circles fall across the full stage, virtual drumsticks mirror the tracked hands, and a compact lower-right live-input inset shows the real camera plus its landmark skeleton. Visible fingertip markers show exactly where contact is measured.
 
 ### Current capabilities
 
 - Safe webcam startup and shutdown
-- Mirrored camera preview for natural hand movement
+- Mirrored live-input preview for natural hand movement
 - MediaPipe hand tracking in video mode
-- Two-hand landmark skeletons and fingertip highlights
+- Two-hand landmark skeletons and fingertip highlights in the live-input inset
 - Live detected-hand counter
 - Invisible full-frame play area with no fixed lanes
-- Time-based falling-node movement that stays consistent across frame rates
+- Generated main performance stage with no copied webcam pixels
+- Virtual drumsticks that use the index-finger landmark as each stick tip
+- Glowing stage markers for every fingertip used by collision detection
+- Numbered challenge notes with a brighter next target for clear playing order
+- Time-based, constant-speed falling-node movement that stays consistent across frame rates
 - Contact detection using all fingertips on both hands
 - Path-based collision that catches fast movements between camera frames
 - Separate musical-timing grades and movement-strength bonuses
@@ -27,23 +31,30 @@ Phases 1–4 are complete, and the Phase 5 portfolio interface is implemented an
 - Immediate, overlapping synthesised sounds through a persistent audio output stream
 - A simplified 35-note opening melody from Beethoven's *Für Elise*
 - An absolute beat clock that stays aligned after a slow camera frame
-- Shrinking timing halos with `PERFECT`, `GREAT`, and `GOOD` accuracy grades
-- Score, combo, accuracy, final rank, countdown, and results screen
+- First challenge circle enters from the top exactly when the countdown reaches `GO`
+- Reliable `HIT` feedback with optional `PERFECT`, `GREAT`, and `GOOD` timing bonuses
+- Score, combo, completion percentage, final rank, countdown, and results screen
 - A polished title screen and recording-friendly visual style
 - A compact gameplay HUD with score, combo, hit/miss totals, and song progress
 - Toggleable help and technical overlays
 - Live FPS, MediaPipe inference time, detected-hand count, landmark count, and mean handedness-classification confidence in the technical view
-- A visible OpenCV + MediaPipe project badge
+- Toggleable performance benchmark with average/minimum FPS, slow and estimated dropped frames, and average/median/P95/worst pipeline timings
+- Privacy-safe JSON and Markdown benchmark reports that store no images or landmark coordinates
+- A responsive 1280×720 computer-vision input limit, even when a camera driver supplies larger frames
+- Background latest-frame camera capture that overlaps camera waiting with inference and rendering
+- Adaptive landmark smoothing that reduces stationary stick jitter while preserving deliberate strikes
+- Stable Left/Right hand identities and a short visual-only grace period for brief tracking loss
+- An optional OpenCV + MediaPipe technical overlay
 - Four colour-coded instruments and a free-play mode
-- Hands-only privacy, skeleton-only privacy, and normal-camera views
+- Hands-only privacy, skeleton-only privacy, and normal-camera modes for the live-input inset
 - Mute, restart, and a camera-free sound check
 
 ### Next milestone
 
-The next work will strengthen the evidence behind the showcase:
+The benchmark recorder and two evidence-led performance changes are implemented. The next work will validate the background camera architecture with another repeatable live-camera session:
 
-- Measure camera capture, MediaPipe inference, game update, rendering, and audio latency.
-- Add repeatable FPS, frame-time, and robustness benchmarks.
+- Compare the original 15.03 FPS baseline, the 16.04–16.59 FPS 720p results, and a new 60-second background-capture run.
+- Compare background camera read, main-loop camera wait, MediaPipe inference, rendering, complete-frame, skipped-source-frame, and audio-request measurements.
 - Calibrate camera and audio delay from measured results.
 - Collect labelled landmark sequences for a custom temporal gesture classifier.
 - Compare the trained classifier with the current rule-based movement logic using precision, recall, F1 score, and a confusion matrix.
@@ -52,7 +63,7 @@ The complete career-focused roadmap, measurable completion checks, and deferred 
 
 ## Play music with your hands
 
-The game starts in **Challenge** mode. After a three-second countdown, each circle carries one scheduled note from the opening of *Für Elise*. The circle's white halo becomes smaller as its beat approaches. The ideal moment is when the halo meets the circle and turns green. A late halo turns warm orange.
+The game starts in **Challenge** mode. Press `Space` on the title screen to begin the countdown. The first circle enters from the top at the exact moment the three-second countdown reaches `GO`, then takes two seconds to reach its first beat in the upper third of the screen. Each later circle carries one scheduled note from the opening of *Für Elise*. Challenge circles are numbered in chart order, and the next unhit circle is slightly brighter without adding a fixed target or timing ring. If a circle is never touched, it keeps the same speed, continues down, and becomes a miss only after leaving the bottom of the stage.
 
 The timing window is intentionally forgiving for camera play:
 
@@ -61,8 +72,11 @@ The timing window is intentionally forgiving for camera play:
 | Up to 0.10 seconds | `PERFECT` |
 | Up to 0.22 seconds | `GREAT` |
 | Up to 0.42 seconds | `GOOD` |
+| Outside 0.42 seconds while still visible | `HIT` |
 
-A very early contact waits until the playable window opens. If a circle passes the late edge of that window, it becomes a miss and breaks the combo. This keeps accidental contact near the top of the screen from playing a note far too early.
+Every visible circle remains physically hittable from the moment it enters at the top until it leaves through the bottom. Any contact removes the circle, plays its attached sound, and continues the hit combo. Only the brighter next circle can earn a `PERFECT`, `GREAT`, or `GOOD` timing bonus. Touching a later circle first gives that circle a neutral `HIT` and marks any earlier skipped circles as out of order too. Returning to those earlier circles still plays their notes and earns the base hit score, but cannot restore their timing bonuses. After the skipped section is resolved, the next untouched circle becomes eligible for timing bonuses again.
+
+Every caught circle is worth 1,000 base points. Correct order and musical timing add 500 for `PERFECT`, 250 for `GREAT`, or 100 for `GOOD`; an out-of-order or normally timed `HIT` keeps the full base value. Completion is calculated only from caught circles versus misses, so catching every circle still produces 100% completion, while an out-of-order run cannot achieve the maximum score.
 
 Timing and hand movement are separate. `PERFECT`, `GREAT`, and `GOOD` describe closeness to the musical beat. A normal touch is enough to hit; a stronger or deliberate downward/forward movement adds a small loudness and score bonus. The contact path between camera frames is still checked, so a quick sweep can count even when no single frame captures the fingertip inside the circle.
 
@@ -86,11 +100,12 @@ Select the camera window before pressing a key.
 | `Space` | Start from the title screen or replay after Results |
 | `1` | Restart the timed *Für Elise* challenge |
 | `2` | Free play: invent your own tune |
-| `P` | Cycle hands only → skeleton only → normal camera |
+| `P` | Cycle the live-input inset: hands only → skeleton only → normal camera |
 | `M` | Mute/unmute audio |
 | `R` | Restart the current mode, melody, and counters |
 | `H` | Show or hide Help; an active round pauses safely |
 | `D` | Show or hide the technical overlay |
+| `B` | Start or stop a performance benchmark and save its reports |
 | `T` or `Esc` | Return to the title screen |
 | `Q` | Quit |
 
@@ -98,32 +113,51 @@ Changing mode starts a fresh round. Muting clears ringing notes, but the game an
 
 ## Privacy views
 
-Air Rhythm starts with the **normal camera** view. The hand skeleton remains visible over the full mirrored image.
+The large performance stage is always person-free: it is drawn from scratch and does not copy camera pixels. It uses the tracked landmarks only to place and rotate the virtual drumsticks and the small glowing collision points. The index-fingertip marker sits exactly on the drumstick tip; four smaller fingertip markers per hand make every other active collision point visible instead of allowing invisible contacts.
 
-Press `P` once for **Hands only**. The app replaces the face, body, room, and other camera pixels with an opaque dark stage, while revealing small hand shapes estimated from MediaPipe's 21 landmarks. Press `P` again for **Skeleton only**, which reveals no original camera pixels. Press it once more to return to the normal camera.
+The lower-right **LIVE INPUT** inset starts in **normal camera** mode. It shows the mirrored camera plus the coloured hand skeleton, making the live OpenCV and MediaPipe pipeline visible in a demo without placing the player on the main stage.
 
-MediaPipe still receives the normal mirrored camera frame in every view. Privacy is applied only to the image shown in the game, so hiding the camera does not weaken hand detection.
+Press `P` once for **Hands only** in that inset. The app replaces the face, body, room, and other camera pixels with an opaque stage, while revealing small hand shapes estimated from MediaPipe's 21 landmarks. Press `P` again for **Skeleton only**, which reveals no original camera pixels. Press it once more to return the inset to the normal camera.
 
-The hands-only mask is estimated from landmarks rather than pixel-perfect hand segmentation. If a hand passes directly across a face, a few pixels behind the hand can fall inside its cut-out. Use skeleton-only mode when complete visual privacy is required. This privacy feature changes the live game display; it does not control separate screen-recording or camera software.
+MediaPipe still receives the normal mirrored camera frame in every input mode. Privacy is applied only to the displayed inset, so hiding camera pixels does not weaken hand detection.
+
+The hands-only mask is estimated from landmarks rather than pixel-perfect hand segmentation. If a hand passes directly across a face, a few pixels behind the hand can fall inside its cut-out. Use skeleton-only mode when complete visual privacy is required. This feature changes the app display; it does not control separate screen-recording or camera software.
 
 ## How the current foundation works
 
 ```text
 Webcam frame
+    -> an OpenCV background worker continuously keeps the newest complete frame
+    -> the main loop receives a fresh frame without repeating stale camera input
     -> OpenCV mirrors the frame
     -> the frame is converted from BGR to RGB
     -> MediaPipe detects hand landmarks
+    -> adaptive filtering stabilises the landmarks and preserves hand identity
     -> normalized landmarks are converted to pixels
-    -> the selected privacy view replaces hidden camera pixels
+    -> the index-fingertip landmarks place virtual drumstick tips on a generated stage
+    -> all active fingertip collision points are drawn on that stage
+    -> the selected privacy view prepares only the lower-right live-input inset
     -> fingertip paths are checked against falling circles
     -> the beat clock compares contact time with each node's target time
     -> successful hits trigger prepared sounds in the background
-    -> OpenCV draws the game, interface, and hand-tracking skeleton
+    -> OpenCV draws the performance stage, interface, drumsticks, and input skeleton
 ```
 
-MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The application converts the model's normalized output into pixel positions, keeps short movement histories, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the motion, interaction, timing, and presentation systems are original application engineering.
+MediaPipe performs pretrained landmark inference; OpenCV owns the surrounding live image pipeline and display. The app requests a 1280×720, 30 FPS camera mode and downscales larger frames before inference if the camera driver ignores that request. A background worker waits for camera frames while the main thread performs inference, game updates, and rendering. Only the newest complete frame is used, preventing a backlog of old input from adding visible latency. This bounds the amount of pixel work without stretching or upscaling smaller inputs.
 
-Press `D` during the demonstration to reveal the technical overlay. It makes the active pipeline visible through live FPS, MediaPipe inference time, hand count, processed landmark count, and the mean Left/Right handedness-classification confidence when available. That value is not presented as overall tracking accuracy. Press `D` again for the cleaner recording view.
+MediaPipe's raw landmark coordinates pass through an adaptive filter before they control the stage. Small changes are smoothed strongly while deliberate fast movement—including forward depth movement—automatically receives less smoothing. Persistent Left/Right identities prevent detector result-order changes from swapping stick colours or motion histories. If a hand disappears briefly, its last stick pose can remain visible for up to 140 ms to prevent flicker, but that stale pose is immediately excluded from collision detection. The application then converts the stabilised output into pixel positions, keeps short movement histories, maps each index fingertip to a 2D virtual drumstick, exposes all active collision points visually, checks fingertip paths between frames, and combines contact time with the song clock. This distinction matters when describing the project: the current AI component is an integrated pretrained model, while the filtering, motion, interaction, timing, and presentation systems are original application engineering.
+
+Press `D` during the demonstration to reveal the technical overlay. It makes the active pipeline visible through live FPS, background camera-read time, main-loop camera-wait time, camera preparation time, MediaPipe inference time, game-update time, rendering time, complete-frame time, hand count, processed landmark count, and the mean Left/Right handedness-classification confidence when available. That value is not presented as overall tracking accuracy. Press `D` again for the cleaner recording view.
+
+### Performance benchmark
+
+Press `B` to begin a benchmark session. A compact recording badge shows elapsed time, recorded frames, average FPS, slow frames, estimated dropped frames, and the number of hit-to-audio-request samples. Play normally for at least 60 seconds, then press `B` again to stop and save matching JSON and Markdown reports in `benchmark_reports/`.
+
+The report includes average, median, 95th-percentile, best, and worst measurements for background camera reads, main-loop waits for fresh input, camera preparation, MediaPipe inference, game updates, rendering, the complete frame pipeline, and hit-frame audio requests. It also records camera frames intentionally skipped to keep input fresh, average and minimum FPS; requested, camera-reported, captured, processing, and stage resolutions; camera-reported FPS; landmark-filter settings; input mode; sound status; operating system; machine architecture; and Python version. Background camera-read time overlaps other work and therefore must not be added to the complete-frame time.
+
+Raw benchmark files are temporary evidence stored only in the repository's ignored `benchmark_reports/` directory. They remain available while performance work is in progress. After the useful comparisons are consolidated into `docs/PERFORMANCE_STUDY.md`, the raw reports can be deleted rather than kept indefinitely.
+
+The audio figure is intentionally labelled **frame start to audio request**. It measures the software path through camera capture, landmark inference, collision detection, and the call to the audio engine. It does not claim to measure when a physical speaker produces sound. Estimated dropped frames are inferred from the 30 FPS frame budget. Reports contain no camera images and no hand-landmark coordinates.
 
 The sound engine prepares short waveforms once at startup. A waveform is a list of numbers telling the speaker how to move. On a hit, the game requests a prepared sound instead of loading a file or generating a new tone in the camera loop. A separate audio callback mixes ringing notes together, allowing quick consecutive hits without cutting the previous sound off.
 
@@ -166,6 +200,10 @@ audio_engine.py              Prepared tones and background audio mixing
 music.py                     Instruments, melody notes, and note progression
 privacy.py                   Hands-only and skeleton-only display rendering
 rhythm_game.py               Song clock, timing grades, score, and round state
+performance_stage.py         Person-free stage, virtual drumsticks, and input inset
+performance_benchmark.py     Privacy-safe FPS, pipeline timing, and report generation
+camera_capture.py            Background latest-frame camera worker
+hand_stabilizer.py           Adaptive landmark filtering and stable hand identities
 ui.py                        Reusable title, HUD, help, debug, and results drawing
 models/hand_landmarker.task  Local MediaPipe hand model
 requirements.txt             Python dependencies
@@ -187,7 +225,8 @@ Run the automated checks without opening the camera or speakers:
 - [x] Phase 4 — Sound, beat scheduling, scoring, and first music chart
 - [x] Phase 5 implementation — Portfolio UI, compact HUD, help, progress, and technical overlay
 - [ ] Phase 5 validation — Live 720p/1080p camera check and a clear 30-second recording
-- [ ] Next — Measured computer-vision performance, latency, calibration, and robustness
+- [x] Performance recorder — FPS, pipeline timings, estimated dropped frames, and privacy-safe reports
+- [ ] Next — Live benchmark evidence, audio calibration, and robustness testing
 - [ ] Later — Custom temporal gesture dataset, model training, and evaluation
 
 See [FUTURE_PLAN.md](FUTURE_PLAN.md) for definitions of done, learning outcomes, and optional product ideas kept outside the current portfolio scope.

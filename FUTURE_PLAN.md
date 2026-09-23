@@ -15,7 +15,8 @@ The project already uses:
 - Landmark history for fingertip movement and direction estimates.
 - Path-based collision so fast motion between frames can still hit a node.
 - A timed rhythm challenge, scoring, synthesised audio, and privacy views.
-- A portfolio interface with title, gameplay HUD, help, results, and live technical telemetry.
+- A person-free performance stage with virtual drumsticks driven by hand landmarks.
+- A portfolio interface with title, gameplay HUD, help, results, a live camera-and-skeleton inset, and technical telemetry.
 
 MediaPipe is a pretrained model used by this project.
 It must not be described as a model trained by us.
@@ -39,11 +40,14 @@ Plans are ranked by career and learning value:
 ### Work
 
 - Create a polished title and tutorial screen.
-- Keep the gameplay screen clean for screen recording.
+- Keep the gameplay screen clean for screen recording with a person-free main stage.
 - Show score, combo, timing feedback, song progress, and hand-detection status clearly.
-- Keep the MediaPipe hand skeleton visible during the demonstration.
+- Keep the MediaPipe hand skeleton visible in the compact live-input inset during the demonstration.
+- Make the virtual drumsticks visibly follow the tracked hands without pretending they are a 3D reconstruction.
+- Show every active fingertip collision point, with the index point aligned to the virtual drumstick tip.
+- Number challenge notes and subtly brighten the next unhit note so chart order is immediately understandable.
 - Add a debug view for FPS, inference time, detected hands, landmark count, and handedness-classification confidence when available.
-- Add a small OpenCV + MediaPipe label without making the interface look like a technical dashboard.
+- Keep OpenCV + MediaPipe details available in the optional technical view without making normal play look like a dashboard.
 - Move drawing responsibilities out of the main camera loop where practical.
 
 ### Definition of Done
@@ -52,25 +56,56 @@ Plans are ranked by career and learning value:
 - The title, gameplay, and results screens fit correctly at 1280×720 and 1920×1080.
 - Debug information can be turned on and off with one key.
 - Normal play remains readable when the debug view is off.
-- A 30-second recording clearly shows hand tracking, node contact, timing feedback, and score changes.
+- A 30-second recording clearly shows the live input skeleton, virtual drumsticks, node contact, timing feedback, and score changes.
 
 ### Learning outcomes
 
 - Separate computer-vision processing from interface rendering.
-- Design live overlays that stay readable over changing camera frames.
+- Design live overlays that stay readable over a generated performance stage.
+- Separate private camera evidence from the public-facing visual experience.
 - Present technical information without distracting from the interaction.
 
 ## Milestone 2 — Latency calibration and performance measurement
 
+**Status:** The privacy-safe benchmark recorder, initial comparison runs, and background latest-frame capture are implemented. Validation of the new capture architecture and audio-device calibration are still pending.
+
 ### Work
 
 - Measure camera capture, MediaPipe inference, game update, rendering, and audio-trigger time separately.
+- Measure camera preparation separately so resizing and colour conversion are visible rather than hidden inside the frame total.
 - Add a rolling FPS and frame-time measurement.
 - Record average, median, 95th-percentile, and worst frame times.
 - Create a simple audio-delay calibration flow for the local computer.
 - Compare speakers, wired headphones, and Bluetooth only when those devices are available.
 - Profile the main loop and optimise the slowest measured stage.
 - Document the test machine, camera resolution, and test settings.
+
+### Implemented foundation
+
+- Press `B` to start or stop a benchmark without interrupting gameplay.
+- Measure camera capture, MediaPipe inference, game update, rendering, complete-frame processing, and frame-start-to-audio-request timing.
+- Report average, median, 95th-percentile, best, and worst values.
+- Track average/minimum FPS, slow frames, and estimated dropped frames against a 30 FPS budget.
+- Save JSON plus readable Markdown containing environment and test settings.
+- Store no camera images and no hand-landmark coordinates.
+- Label audio timing as an approximate software-path measurement rather than physical speaker latency.
+- Request 1280×720 at 30 FPS and defensively downscale larger camera frames before landmark inference.
+- Record requested, reported, captured, processing, and stage resolutions so benchmark comparisons remain honest.
+- Read camera frames on a background worker so device waiting can overlap MediaPipe inference and rendering.
+- Track the main-loop wait for fresh input and source frames intentionally skipped to avoid stale latency.
+
+### Current comparison target
+
+- Baseline: 15.03 average FPS from a 77.20-second run with 1920×1080 captured frames and a 1920×1200 generated stage.
+- First optimisation: two 1280×720 runs measured 16.04 and 16.59 average FPS; rendering improved, but serial camera waiting still dominated the loop.
+- Next run: play for at least 60 seconds with background latest-frame capture and compare every timing row with both earlier architectures.
+- Validate the new adaptive landmark filtering against the low-hand-position recording and tune only from repeatable observations.
+
+### Evidence lifecycle
+
+- Keep raw JSON and Markdown measurements temporarily in the repository-local, ignored `benchmark_reports/` directory.
+- Consolidate the methodology, bottlenecks, architecture changes, before/after table, and conclusions into `docs/PERFORMANCE_STUDY.md`.
+- Delete raw benchmark files after the consolidated study contains every result needed for the portfolio.
 
 ### Definition of Done
 
@@ -138,6 +173,13 @@ This will add original ML work while MediaPipe continues to provide the raw hand
 - Integrate a trained model into a real-time OpenCV application.
 
 ## Milestone 4 — Computer-vision robustness
+
+### Implemented foundation
+
+- Preserve stable Left/Right identities even when MediaPipe reverses its result-list order.
+- Adaptively smooth landmark position and orientation while relaxing the filter during fast deliberate movement.
+- Keep a lost hand's final stick pose visible for up to 140 ms, while immediately disabling its stale collision points.
+- Reset movement history when a hand disappears so reacquisition cannot create a false strike.
 
 ### Work
 
