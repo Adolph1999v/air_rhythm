@@ -4,12 +4,18 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "predev": "npm run prepare:assets",
     "dev": "vite",
+    "prebuild": "npm run prepare:assets",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
     "typescript": "6.0.3",
     "vite": "8.3.0"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "1.0.1"
   }
 }
