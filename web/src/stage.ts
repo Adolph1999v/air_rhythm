@@ -115,10 +115,14 @@ export class StageRenderer {
     fill.addColorStop(1, node.color)
     ctx.fillStyle = fill
     circle(ctx, { x, y }, radius)
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = node.color
-    ctx.lineWidth = Math.max(2, radius * 0.06)
+    // The upcoming note keeps its instrument colour, but its edge needs a
+    // separate high-contrast cue so it cannot blend into the other notes.
+    ctx.shadowColor = next ? '#ffeaa0' : node.color
+    ctx.shadowBlur = next ? radius * 0.55 : 0
+    ctx.strokeStyle = next ? '#ffe07a' : node.color
+    ctx.lineWidth = next ? Math.max(4, radius * 0.11) : Math.max(2, radius * 0.06)
     ctx.stroke()
+    ctx.shadowBlur = 0
     ctx.fillStyle = '#f8fbff'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
