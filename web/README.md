@@ -1,6 +1,6 @@
 # Air Rhythm Web
 
-This folder holds the browser version alongside the finished Python desktop app. The web version is still local-only on its development branch.
+This folder holds the browser version alongside the finished Python desktop app. This preview is for local testing and has not been deployed.
 
 ## Current milestone: tracking preview
 
