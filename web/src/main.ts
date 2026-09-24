@@ -1,7 +1,7 @@
 import { attachCamera, cameraErrorMessage, CameraFrameGate, requestCameraStream, stopCamera } from './camera'
 import { BrowserAudio } from './audio'
 import { RhythmGame } from './game'
-import { FingertipMotionTracker, HandStabilizer, type FingertipMotion } from './hands'
+import { FingertipMotionTracker, HandStabilizer, WristVisibilityMonitor, type FingertipMotion } from './hands'
 import { drawInputPreview, StageRenderer } from './stage'
 import { createHandTracker, trackedHandsFrom, type TrackedHand } from './tracking'
 import type { HandLandmarker } from '@mediapipe/tasks-vision'
@@ -70,6 +70,7 @@ app.innerHTML = `
       <button id="resume-button" class="start-button" type="button">Resume <span aria-hidden="true">↗</span></button>
     </div>
     <aside class="input-panel" aria-label="Live camera input">
+      <div id="tracking-warning" class="tracking-warning" role="status" aria-live="polite" hidden><span aria-hidden="true">!</span><span>Keep your whole hand and wrist visible in the camera.</span></div>
       <div class="input-heading"><span><span class="live-dot" aria-hidden="true"></span> LIVE INPUT</span><span id="hand-count">HANDS 0/2</span></div>
       <div class="input-frame"><canvas id="input-preview" aria-label="Mirrored camera view with detected hand skeletons"></canvas><div id="camera-placeholder" class="camera-placeholder">Camera preview appears here</div></div>
     </aside>
@@ -98,12 +99,14 @@ const cameraBadge = requiredElement<HTMLElement>('#camera-badge')
 const modelBadge = requiredElement<HTMLElement>('#model-badge')
 const soundBadge = requiredElement<HTMLElement>('#sound-badge')
 const handCount = requiredElement<HTMLElement>('#hand-count')
+const trackingWarning = requiredElement<HTMLElement>('#tracking-warning')
 const cameraPlaceholder = requiredElement<HTMLElement>('#camera-placeholder')
 const welcomeMessage = requiredElement<HTMLElement>('#welcome-message')
 const liveMessage = requiredElement<HTMLElement>('#live-message')
 const game = new RhythmGame()
 const stage = new StageRenderer(requiredElement<HTMLCanvasElement>('#stage'))
 const stabilizer = new HandStabilizer()
+const wristMonitor = new WristVisibilityMonitor()
 const motionTracker = new FingertipMotionTracker()
 const cameraFrames = new CameraFrameGate()
 const mirroredFrame = document.createElement('canvas')
@@ -118,6 +121,7 @@ let activeHands: TrackedHand[] = []
 let sessionId = 0
 let shownHandCount = -1
 let helpOpen = false
+let wristWarningActive = false
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 function nowSeconds(): number { return performance.now() / 1000 }
@@ -136,6 +140,7 @@ function updateScreen(now = nowSeconds()): void {
   hud.hidden = !live || (screen !== 'challenge' && screen !== 'free')
   results.hidden = !live || screen !== 'results' || helpOpen
   help.hidden = !live || !helpOpen
+  trackingWarning.hidden = !live || helpOpen || (screen !== 'challenge' && screen !== 'free') || !wristWarningActive
   helpButton.hidden = !live || screen === 'menu'
   restartButton.hidden = !live || (screen !== 'challenge' && screen !== 'free')
   menuButton.hidden = !live || screen === 'menu'
@@ -172,8 +177,8 @@ function endSession(message: string, mode: Mode = 'idle'): void {
   if (audioContext) void audioContext.close().catch(() => {})
   audioContext = null
   activeHands = []
-  stabilizer.reset(); motionTracker.reset(); game.toMenu()
-  helpOpen = false; shownHandCount = -1
+  stabilizer.reset(); wristMonitor.reset(); motionTracker.reset(); game.toMenu()
+  helpOpen = false; shownHandCount = -1; wristWarningActive = false
   inputPreview.getContext('2d')?.clearRect(0, 0, inputPreview.width, inputPreview.height)
   cameraPlaceholder.hidden = false
   cameraBadge.textContent = 'CAMERA OFF'
@@ -317,6 +322,7 @@ function animationFrame(timeMs: number): void {
       updateMirroredFrame()
       if (tracker) {
         activeHands = stabilizer.update(trackedHandsFrom(tracker.detectForVideo(mirroredFrame, timeMs)), now)
+        wristWarningActive = wristMonitor.update(activeHands, now)
         setHandCount(activeHands.length)
         if (game.screen === 'challenge' || game.screen === 'free') {
           motions = motionTracker.update(activeHands, now, width, height)

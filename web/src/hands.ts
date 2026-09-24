@@ -106,6 +106,62 @@ export class HandStabilizer {
   reset(): void { this.tracks.clear(); this.nextUnknown = 1 }
 }
 
+const WRIST_WARNING_Y = 0.88
+const WRIST_CLEAR_Y = 0.82
+const LOW_WRIST_Y = 0.78
+const DROPOUT_WARNING_SECONDS = 0.12
+const MISSING_HAND_SECONDS = 2
+
+interface WristObservation {
+  lastSeen: number
+  low: boolean
+  warning: boolean
+  nearEdgeFrames: number
+  clearFrames: number
+}
+
+/** Gives framing guidance when the wrist approaches the lower camera edge. */
+export class WristVisibilityMonitor {
+  private readonly observations = new Map<string, WristObservation>()
+
+  update(hands: TrackedHand[], now: number): boolean {
+    const seen = new Set<string>()
+    hands.forEach((hand, index) => {
+      const identity = hand.identity ?? hand.label ?? `Hand-${index}`
+      const wristY = hand.landmarks[0]?.y
+      const observation = this.observations.get(identity) ?? {
+        lastSeen: now, low: false, warning: false, nearEdgeFrames: 0, clearFrames: 0,
+      }
+      seen.add(identity)
+      observation.lastSeen = now
+      const validWrist = typeof wristY === 'number' && Number.isFinite(wristY)
+      observation.low = validWrist && wristY >= LOW_WRIST_Y
+      // A little hysteresis keeps the notice steady around the frame boundary.
+      const nearEdge = !validWrist || wristY >= (observation.warning ? WRIST_CLEAR_Y : WRIST_WARNING_Y)
+      if (nearEdge) {
+        observation.nearEdgeFrames += 1
+        observation.clearFrames = 0
+        if (observation.nearEdgeFrames >= 2) observation.warning = true
+      } else {
+        observation.clearFrames += 1
+        observation.nearEdgeFrames = 0
+        if (observation.clearFrames >= 2) observation.warning = false
+      }
+      this.observations.set(identity, observation)
+    })
+
+    for (const [identity, observation] of this.observations) {
+      if (seen.has(identity)) continue
+      const missingFor = now - observation.lastSeen
+      if (missingFor > MISSING_HAND_SECONDS) this.observations.delete(identity)
+      else if (observation.low && missingFor >= DROPOUT_WARNING_SECONDS) observation.warning = true
+    }
+    return [...this.observations.values()].some(observation => observation.warning)
+  }
+
+  reset(): void { this.observations.clear() }
+}
+
 export interface FingertipMotion {
   previous: { x: number; y: number }
   current: { x: number; y: number }
