@@ -234,6 +234,11 @@ This will add original ML work while MediaPipe continues to provide the raw hand
 - Support portfolio claims with evidence.
 - Explain tradeoffs, limitations, and lessons with confidence.
 
+## Desktop visual refresh after browser motion parity
+
+- Bring the browser version's black-sky layout, typography, menus, and HUD back to the Python/OpenCV app after the web interaction has been tested.
+- Keep the desktop camera inset, hand skeleton, existing gameplay timing, and benchmark controls intact during that visual pass.
+
 ## Optional later product and game ideas
 
 These ideas can make Air Rhythm more game-like, but they come after the portfolio milestones:
